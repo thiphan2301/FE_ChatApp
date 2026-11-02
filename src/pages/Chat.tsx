@@ -1,44 +1,112 @@
-import React, { useState, useEffect } from 'react';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import React, { useState, useEffect, useRef } from 'react';
 import { UserAvatar } from '../components/common/UserAvatar';
-import { getMockChatList, getMockMessages } from '../data/mockChats';
-import type { ChatItem, MessageItem } from '../data/mockChats';
+import { wsService, type ServerResponse } from '../services/websocketService';
 
 export default function Chat() {
-    const [chatList, setChatList] = useState<ChatItem[]>([]);
-    const [selectedChat, setSelectedChat] = useState<ChatItem | null>(null);
-    const [messages, setMessages] = useState<MessageItem[]>([]);
+    const [chatList, setChatList] = useState<any[]>([]);
+    const [selectedChat, setSelectedChat] = useState<any | null>(null);
+    const [messages, setMessages] = useState<any[]>([]);
     const [inputText, setInputText] = useState('');
+    const [, setIsLoading] = useState(true);
+    const chatContainerRef = useRef<HTMLDivElement | null>(null);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            const data: ChatItem[] = getMockChatList();
-            setChatList(data);
-
-            if (data.length > 0) {
-                setSelectedChat(data[0]);
-                setMessages(getMockMessages(data[0].id));
-            }
-        };
-        fetchData();
-    }, []);
-
-    const handleSelectChat = (chat: ChatItem) => {
-        setSelectedChat(chat);
-        setMessages(getMockMessages(chat.id));
+    // hàm nhảy xuống dưới cùng cuôc trò truyện
+    const scrollToBottomInstant = () => {
+        if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
     };
 
+    // theo dõi khi đổi đoạn chat hoặc khi có tín nhắn mới
+    useEffect(() => {
+        if (messages.length > 0) {
+            // Dùng requestAnimationFrame để chắc chắn DOM đã render xong rồi hảy xuống dưới cùng luôn
+            requestAnimationFrame(() => {
+                scrollToBottomInstant();
+            });
+        }
+    }, [messages, selectedChat]);
+
+    // hàm lấy lịch sử tin nhắn
+    const fetchMessagesForChat = (chat: any) => {
+        if (chat.type === 1) {
+            wsService.sendMessage('GET_ROOM_CHAT_MES', { name: chat.name, page: 1 });
+        } else {
+            wsService.sendMessage('GET_PEOPLE_CHAT_MES', { name: chat.name, page: 1 });
+        }
+    };
+
+    // Lắng nghe dữ liệu trả về từ WebSocket Server
+    useEffect(() => {
+        // connect ws thành công rồi mới lấy danh sách (để tránh bị trống danh sách)
+        wsService.onOpen(() => {
+            wsService.sendMessage('GET_USER_LIST', {});
+        });
+
+        const removeListener = wsService.addListener((response: ServerResponse) => {
+            if (response.status === 'success') {
+                if (response.event === 'GET_USER_LIST') {
+                    // ktra dl an toàn tránh lỗi
+                    const list = Array.isArray(response.data) ? response.data : [];
+                    setChatList(list);
+                    //tắt trạng thái loading
+                    setIsLoading(false);
+
+                    // Nếu có danh sách và chưa chọn chat nào, tự động chọn người đầu tiên và tải tin nhắn luôn
+                    if (list.length > 0 && !selectedChat) {
+                        const firstChat = list[0];
+                        setSelectedChat(firstChat);
+                        fetchMessagesForChat(firstChat);
+                    }
+                } else if (response.event === 'GET_PEOPLE_CHAT_MES' || response.event === 'GET_ROOM_CHAT_MES') {
+                    // Đảm bảo dữ liệu nhận về là mảng, nếu không gán mảng rỗng để không bao giờ lỗi .map()
+                    let msgData = response.data;
+                    if (msgData && typeof msgData === 'object' && 'chatMess' in msgData) {
+                        msgData = (msgData as any).chatMess;
+                    }
+                    setMessages(Array.isArray(msgData) ? msgData : []);
+                } else if (response.event === 'SEND_CHAT') {
+                    if (response.data) {
+                        setMessages((prev) => [...prev, response.data]);
+                    }
+                }
+            }
+        });
+
+        return () => {
+            removeListener();
+        };
+    }, []);
+
+    // Khi bấm chọn một cuộc trò chuyện trong danh sách
+    const handleSelectChat = (chat: any) => {
+        setSelectedChat(chat);
+        //xóa tạm tin nhắn cũ khi đổi chat
+        setMessages([]);
+        fetchMessagesForChat(chat);
+    };
+
+    // Gửi tin nhắn thật lên server
     const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!inputText.trim()) return;
+        if (!inputText.trim() || !selectedChat) return;
 
-        const newMessage: MessageItem = {
-            id: Date.now(),
-            sender: 'me',
-            text: inputText,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        const messagePayload = {
+            type: selectedChat.type === 1 ? 'room' : 'people',
+            to: selectedChat.name,
+            mes: inputText,
         };
 
-        setMessages([...messages, newMessage]);
+        wsService.sendMessage('SEND_CHAT', messagePayload);
+
+        const localMsg = {
+            name: 'thi2301',
+            mes: inputText,
+            createAt: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
+        };
+        setMessages((prev) => [...prev, localMsg]);
+
         setInputText('');
     };
 
@@ -61,29 +129,25 @@ export default function Chat() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
-                    {chatList.map((chat) => {
-                        const isActive = selectedChat?.id === chat.id;
+                    {chatList.map((chat, idx) => {
+                        const isActive = selectedChat?.name === chat.name;
                         return (
                             <div
-                                key={chat.id}
+                                key={idx}
                                 onClick={() => handleSelectChat(chat)}
                                 className={`p-3 flex items-center gap-3 cursor-pointer transition ${
                                     isActive ? 'bg-[#EBF2EE]' : 'hover:bg-gray-50'
                                 }`}
                             >
-                                <UserAvatar name={chat.name} online={chat.online} size="md" />
+                                <UserAvatar name={chat.name} online={true} size="md" />
 
                                 <div className="flex-1 min-w-0 grid grid-cols-[1fr_auto] gap-x-2 items-center text-left">
                                     <h4 className="text-sm font-semibold text-gray-800 truncate">{chat.name}</h4>
-                                    <span className="text-[10px] text-gray-400 shrink-0">{chat.time}</span>
-                                    <p className="text-xs text-gray-500 truncate col-span-2 mt-0.5">{chat.message}</p>
+                                    <span className="text-[10px] text-gray-400 shrink-0">{chat.actionTime || ''}</span>
+                                    <p className="text-xs text-gray-500 truncate col-span-2 mt-0.5">
+                                        {chat.type === 1 ? 'Phòng chat nhóm' : 'Trò chuyện cá nhân'}
+                                    </p>
                                 </div>
-
-                                {chat.unread > 0 && (
-                                    <div className="w-5 h-5 rounded-full bg-[#1C3A32] text-white text-[10px] flex items-center justify-center font-bold shrink-0">
-                                        {chat.unread}
-                                    </div>
-                                )}
                             </div>
                         );
                     })}
@@ -92,16 +156,14 @@ export default function Chat() {
 
             {/* Col 2: Khung chat chi tiết */}
             <div className="flex-1 flex flex-col h-full bg-[#FCFBFA]">
-                {selectedChat && (
+                {selectedChat ? (
                     <>
                         <div className="px-6 py-3.5 bg-white border-b border-gray-200 flex items-center justify-between shrink-0">
                             <div className="flex items-center gap-3">
-                                <UserAvatar name={selectedChat.name} online={selectedChat.online} size="sm" />
+                                <UserAvatar name={selectedChat.name} online={true} size="sm" />
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-800">{selectedChat.name}</h3>
-                                    <p className="text-[11px] text-emerald-600 font-medium">
-                                        {selectedChat.online ? 'Đang hoạt động' : 'Không hoạt động'}
-                                    </p>
+                                    <p className="text-[11px] text-emerald-600 font-medium">Đang hoạt động</p>
                                 </div>
                             </div>
 
@@ -113,20 +175,26 @@ export default function Chat() {
                             </div>
                         </div>
 
-                        <div className="flex-1 p-6 overflow-y-auto space-y-4">
-                            {messages.map((msg) => (
-                                <div key={msg.id} className={`flex flex-col ${msg.sender === 'me' ? 'items-end' : 'items-start'}`}>
-                                    <div className={`p-3 rounded-2xl max-w-md text-sm shadow-sm ${
-                                        msg.sender === 'me' ? 'bg-[#E4EFEA] text-gray-800 rounded-br-sm' : 'bg-white text-gray-800 rounded-bl-sm border border-gray-100'
-                                    }`}>
-                                        <p>{msg.text}</p>
-                                        {msg.image && (
-                                            <img src={msg.image} alt="attachment" className="mt-2 rounded-xl w-64 h-36 object-cover" />
-                                        )}
+                        <div ref={chatContainerRef} className="flex-1 p-6 overflow-y-auto space-y-4">
+                            {Array.isArray(messages) && messages.map((msg, index) => {
+                                const senderName = msg.name || msg.from || '';
+                                const currentLoggedInUser = localStorage.getItem('username') || 'thi2301';
+                                const isMe = senderName === currentLoggedInUser;
+
+                                return (
+                                    <div key={index} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                        <div className={`p-3 rounded-2xl max-w-md text-sm shadow-sm border ${
+                                            isMe
+                                                ? 'bg-[#EBF2EE] border-emerald-100 text-right'
+                                                : 'bg-white border-gray-100 text-left'
+                                        }`}>
+                                            <span className="text-[10px] font-bold text-gray-600 block mb-0.5">{senderName}</span>
+                                            <p className="break-words">{msg.mes || msg.text}</p>
+                                        </div>
+                                        <span className="text-[10px] text-gray-400 mt-1">{msg.createAt || ''}</span>
                                     </div>
-                                    <span className="text-[10px] text-gray-400 mt-1">{msg.time}</span>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
 
                         <form onSubmit={handleSendMessage} className="p-4 bg-white border-t border-gray-200">
@@ -153,6 +221,8 @@ export default function Chat() {
                             </div>
                         </form>
                     </>
+                ) : (
+                    <div className="flex-1 flex items-center justify-center text-gray-400">Chọn một cuộc trò chuyện để bắt đầu</div>
                 )}
             </div>
         </div>

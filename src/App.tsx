@@ -8,8 +8,24 @@ import Search from './pages/Search.tsx';
 import Contacts from './pages/Contacts';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
+import {useEffect} from "react";
+import {wsService} from "./services/websocketService.ts";
 
 function App() {
+    useEffect(() => {
+        //connect websocket ngay khi chạy ứng dụng
+        wsService.connect();
+
+        // chưa xog login nên gọi API đăng nhập ngầm để test trc
+        // chờ connect thành công mới login
+        wsService.onOpen(() => {
+            wsService.sendMessage('LOGIN', {
+                user: 'thi2301',
+                pass: 'thi230105',
+            });
+        });
+    }, []);
+
   return (
       <BrowserRouter>
         <Routes>
