@@ -3,6 +3,7 @@ import { MainLayout } from './components/layout/MainLayout';
 
 import Login from './pages/Login.tsx';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
 import Chat from './pages/Chat';
 import Search from './pages/Search.tsx';
 import Contacts from './pages/Contacts';
@@ -15,6 +16,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
 
           {/* Các trang dùng chung MainLayout */}
           <Route element={<MainLayout />}>
@@ -26,7 +28,7 @@ function App() {
           </Route>
 
           {/* Mặc định sẽ chuyển về /login */}
-          <Route path="*" element={<Navigate to="/chat" replace />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>
   );
