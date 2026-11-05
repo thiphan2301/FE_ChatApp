@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from '../components/layout/AuthLayout';
-import { wsService } from '../services/websocket';
+import { wsService } from '../services/websocketService';
+
 
 export default function Register() {
   const navigate = useNavigate();

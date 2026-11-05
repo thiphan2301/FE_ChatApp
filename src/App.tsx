@@ -9,22 +9,44 @@ import Search from './pages/Search.tsx';
 import Contacts from './pages/Contacts';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
-import {useEffect} from "react";
-import {wsService} from "./services/websocketService.ts";
+import { useEffect } from "react";
+import { wsService, type ServerResponse } from "./services/websocketService";
+
 
 function App() {
     useEffect(() => {
-        //connect websocket ngay khi chạy ứng dụng
+        // connect websocket ngay khi chạy ứng dụng
         wsService.connect();
 
-        // chưa xog login nên gọi API đăng nhập ngầm để test trc
-        // chờ connect thành công mới login
         wsService.onOpen(() => {
-            wsService.sendMessage('LOGIN', {
-                user: 'thi2301',
-                pass: 'thi230105',
-            });
+            const username = localStorage.getItem('username');
+            const reLoginCode = localStorage.getItem('re_login_code');
+
+            if (username && reLoginCode) {
+                // Nếu có code thì thử RE_LOGIN
+                wsService.sendMessage('RE_LOGIN', {
+                    user: username,
+                    code: reLoginCode,
+                });
+            }
         });
+
+        // Lắng nghe kết quả RE_LOGIN để xử lý session
+        const removeListener = wsService.addListener((response: ServerResponse) => {
+            if (response.event === 'RE_LOGIN') {
+                if (response.status === 'error') {
+                    // Nếu session hết hạn hoặc lỗi, xóa storage và về login
+                    console.error('Session expired, please login again');
+                    localStorage.removeItem('re_login_code');
+                    localStorage.removeItem('username');
+                    window.location.href = '/login';
+                } else {
+                    console.log('Re-login successful');
+                }
+            }
+        });
+
+        return () => removeListener();
     }, []);
 
   return (

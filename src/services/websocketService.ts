@@ -16,7 +16,9 @@ class WebSocketService {
     private ws: WebSocket | null = null;
     private url = 'wss://chat.longapp.io.vn/chat/chat';
     private listeners: MessageListener[] = [];
+    private handlers: Map<string, MessageListener[]> = new Map();
     private onOpenCallbacks: OpenListener[] = [];
+
 
     // Mở kết nối WebSocket
     public connect(): void {
@@ -39,6 +41,15 @@ class WebSocketService {
                 const response: ServerResponse = JSON.parse(event.data);
                 // Bắn dữ liệu đó cho tất cả các component đang lắng nghe
                 this.listeners.forEach((callback) => callback(response));
+
+                // Bắn dữ liệu cho các handler đăng ký theo event
+                const eventHandlers = this.handlers.get(response.event) ?? [];
+                eventHandlers.forEach((h) => h(response));
+
+                // Tự động cập nhật RE_LOGIN_CODE nếu có trong response
+                if (response.status === 'success' && response.data?.RE_LOGIN_CODE) {
+                    localStorage.setItem('re_login_code', response.data.RE_LOGIN_CODE);
+                }
             } catch (error) {
                 console.error('Lỗi parse JSON từ WebSocket:', error);
             }
@@ -83,6 +94,22 @@ class WebSocketService {
             this.listeners = this.listeners.filter((cb) => cb !== callback);
         };
     }
+
+    // Đăng ký lắng nghe theo sự kiện (cho Login/Register)
+    public on(event: string, handler: MessageListener): void {
+        const existing = this.handlers.get(event) ?? [];
+        this.handlers.set(event, [...existing, handler]);
+    }
+
+    public off(event: string, handler: MessageListener): void {
+        const existing = this.handlers.get(event) ?? [];
+        this.handlers.set(event, (this.handlers.get(event) ?? []).filter((h) => h !== handler));
+    }
+
+    public sendAction(event: string, data?: any): void {
+        this.sendMessage(event, data || {});
+    }
 }
+
 
 export const wsService = new WebSocketService();
