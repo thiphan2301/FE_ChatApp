@@ -45,7 +45,7 @@ export const Sidebar: React.FC = () => {
             </div>
 
             <div className="w-10 h-10 rounded-full bg-emerald-700 flex items-center justify-center font-bold text-xs border-2 border-white/20 overflow-hidden cursor-pointer hover:opacity-90 transition">
-                <span className="text-white text-xs">THI</span>
+                <span className="text-white text-xs">{localStorage.getItem('username')?.substring(0, 2).toUpperCase() || 'U'}</span>
             </div>
         </aside>
     );

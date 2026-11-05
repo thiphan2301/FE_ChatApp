@@ -8,7 +8,11 @@ export default function Chat() {
     const [selectedChat, setSelectedChat] = useState<any | null>(null);
     const [messages, setMessages] = useState<any[]>([]);
     const [inputText, setInputText] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const [hasMore, setHasMore] = useState(true);
+    const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
     const [, setIsLoading] = useState(true);
+
     const chatContainerRef = useRef<HTMLDivElement | null>(null);
 
     // hàm nhảy xuống dưới cùng cuôc trò truyện
@@ -29,13 +33,28 @@ export default function Chat() {
     }, [messages, selectedChat]);
 
     // hàm lấy lịch sử tin nhắn
-    const fetchMessagesForChat = (chat: any) => {
+    const fetchMessagesForChat = (chat: any, page: number = 1) => {
         if (chat.type === 1) {
-            wsService.sendMessage('GET_ROOM_CHAT_MES', { name: chat.name, page: 1 });
+            wsService.sendMessage('GET_ROOM_CHAT_MES', { name: chat.name, page });
         } else {
-            wsService.sendMessage('GET_PEOPLE_CHAT_MES', { name: chat.name, page: 1 });
+            wsService.sendMessage('GET_PEOPLE_CHAT_MES', { name: chat.name, page });
+        }
+
+        // Kiểm tra online nếu là chat 1-1
+        if (chat.type === 0) {
+            wsService.sendMessage('CHECK_USER_ONLINE', { user: chat.name });
         }
     };
+
+    // Hàm load thêm tin nhắn cũ
+    const handleLoadMore = () => {
+        if (selectedChat && hasMore) {
+            const nextPage = currentPage + 1;
+            setCurrentPage(nextPage);
+            fetchMessagesForChat(selectedChat, nextPage);
+        }
+    };
+
 
     // Lắng nghe dữ liệu trả về từ WebSocket Server
     useEffect(() => {
@@ -60,15 +79,41 @@ export default function Chat() {
                         fetchMessagesForChat(firstChat);
                     }
                 } else if (response.event === 'GET_PEOPLE_CHAT_MES' || response.event === 'GET_ROOM_CHAT_MES') {
-                    // Đảm bảo dữ liệu nhận về là mảng, nếu không gán mảng rỗng để không bao giờ lỗi .map()
+                    // Đảm bảo dữ liệu nhận về là mảng
                     let msgData = response.data;
                     if (msgData && typeof msgData === 'object' && 'chatMess' in msgData) {
                         msgData = (msgData as any).chatMess;
                     }
-                    setMessages(Array.isArray(msgData) ? msgData : []);
+
+                    const newMessages = Array.isArray(msgData) ? msgData : [];
+
+                    if (currentPage === 1) {
+                        setMessages(newMessages);
+                    } else {
+                        // Nối tin nhắn cũ vào đầu danh sách
+                        setMessages((prev) => [...newMessages, ...prev]);
+                    }
+
+                    // Nếu nhận về ít hơn 50 tin thì nghĩa là hết tin nhắn cũ
+                    if (newMessages.length < 50) {
+                        setHasMore(false);
+                    } else {
+                        setHasMore(true);
+                    }
                 } else if (response.event === 'SEND_CHAT') {
                     if (response.data) {
                         setMessages((prev) => [...prev, response.data]);
+                        const senderName = response.data.name || response.data.from;
+                        if (senderName) {
+                            setOnlineUsers(prev => ({ ...prev, [senderName]: true }));
+                        }
+                    }
+                } else if (response.event === 'CHECK_USER_ONLINE') {
+                    if (response.data) {
+                        setOnlineUsers(prev => ({
+                            ...prev,
+                            [selectedChat?.name]: response.data.status
+                        }));
                     }
                 }
             }
@@ -82,10 +127,14 @@ export default function Chat() {
     // Khi bấm chọn một cuộc trò chuyện trong danh sách
     const handleSelectChat = (chat: any) => {
         setSelectedChat(chat);
+        // Reset phân trang
+        setCurrentPage(1);
+        setHasMore(true);
         //xóa tạm tin nhắn cũ khi đổi chat
         setMessages([]);
-        fetchMessagesForChat(chat);
+        fetchMessagesForChat(chat, 1);
     };
+
 
     // Gửi tin nhắn thật lên server
     const handleSendMessage = (e: React.FormEvent) => {
@@ -100,8 +149,9 @@ export default function Chat() {
 
         wsService.sendMessage('SEND_CHAT', messagePayload);
 
+        const myUsername = localStorage.getItem('username') || 'Unknown';
         const localMsg = {
-            name: 'thi2301',
+            name: myUsername,
             mes: inputText,
             createAt: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
         };
@@ -135,11 +185,10 @@ export default function Chat() {
                             <div
                                 key={idx}
                                 onClick={() => handleSelectChat(chat)}
-                                className={`p-3 flex items-center gap-3 cursor-pointer transition ${
-                                    isActive ? 'bg-[#EBF2EE]' : 'hover:bg-gray-50'
-                                }`}
+                                className={`p-3 flex items-center gap-3 cursor-pointer transition ${isActive ? 'bg-[#EBF2EE]' : 'hover:bg-gray-50'
+                                    }`}
                             >
-                                <UserAvatar name={chat.name} online={true} size="md" />
+                                <UserAvatar name={chat.name} online={onlineUsers[chat.name] ?? false} size="md" />
 
                                 <div className="flex-1 min-w-0 grid grid-cols-[1fr_auto] gap-x-2 items-center text-left">
                                     <h4 className="text-sm font-semibold text-gray-800 truncate">{chat.name}</h4>
@@ -160,10 +209,12 @@ export default function Chat() {
                     <>
                         <div className="px-6 py-3.5 bg-white border-b border-gray-200 flex items-center justify-between shrink-0">
                             <div className="flex items-center gap-3">
-                                <UserAvatar name={selectedChat.name} online={true} size="sm" />
+                                <UserAvatar name={selectedChat.name} online={onlineUsers[selectedChat.name] ?? false} size="sm" />
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-800">{selectedChat.name}</h3>
-                                    <p className="text-[11px] text-emerald-600 font-medium">Đang hoạt động</p>
+                                    <p className={`text-[11px] font-medium ${onlineUsers[selectedChat.name] ? 'text-emerald-600' : 'text-gray-400'}`}>
+                                        {onlineUsers[selectedChat.name] ? 'Đang hoạt động' : 'Ngoại tuyến'}
+                                    </p>
                                 </div>
                             </div>
 
@@ -176,18 +227,28 @@ export default function Chat() {
                         </div>
 
                         <div ref={chatContainerRef} className="flex-1 p-6 overflow-y-auto space-y-4">
+                            {hasMore && messages.length >= 50 && (
+                                <div className="flex justify-center mb-4">
+                                    <button
+                                        onClick={handleLoadMore}
+                                        className="text-xs text-emerald-600 hover:underline cursor-pointer"
+                                    >
+                                        Xem tin nhắn cũ hơn
+                                    </button>
+                                </div>
+                            )}
                             {Array.isArray(messages) && messages.map((msg, index) => {
+
                                 const senderName = msg.name || msg.from || '';
-                                const currentLoggedInUser = localStorage.getItem('username') || 'thi2301';
+                                const currentLoggedInUser = localStorage.getItem('username') || 'Unknown';
                                 const isMe = senderName === currentLoggedInUser;
 
                                 return (
                                     <div key={index} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                        <div className={`p-3 rounded-2xl max-w-md text-sm shadow-sm border ${
-                                            isMe
-                                                ? 'bg-[#EBF2EE] border-emerald-100 text-right'
-                                                : 'bg-white border-gray-100 text-left'
-                                        }`}>
+                                        <div className={`p-3 rounded-2xl max-w-md text-sm shadow-sm border ${isMe
+                                            ? 'bg-[#EBF2EE] border-emerald-100 text-right'
+                                            : 'bg-white border-gray-100 text-left'
+                                            }`}>
                                             <span className="text-[10px] font-bold text-gray-600 block mb-0.5">{senderName}</span>
                                             <p className="break-words">{msg.mes || msg.text}</p>
                                         </div>
@@ -222,7 +283,9 @@ export default function Chat() {
                         </form>
                     </>
                 ) : (
-                    <div className="flex-1 flex items-center justify-center text-gray-400">Chọn một cuộc trò chuyện để bắt đầu</div>
+                    <div className="w-10 h-10 rounded-full bg-emerald-700 flex items-center justify-center font-bold text-xs border-2 border-white/20 overflow-hidden cursor-pointer hover:opacity-90 transition">
+                        <span className="text-white text-xs">{localStorage.getItem('username')?.substring(0, 2).toUpperCase() || 'U'}</span>
+                    </div>
                 )}
             </div>
         </div>
