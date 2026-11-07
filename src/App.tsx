@@ -5,6 +5,7 @@ import Login from './pages/Login.tsx';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import Chat from './pages/Chat';
+import GroupChat from './pages/GroupChat';
 import Search from './pages/Search.tsx';
 import Contacts from './pages/Contacts';
 import Profile from './pages/Profile';
@@ -59,6 +60,7 @@ function App() {
           {/* Các trang dùng chung MainLayout */}
           <Route element={<MainLayout />}>
             <Route path="/chat" element={<Chat />} />
+            <Route path="/group-chat" element={<GroupChat />} />
             <Route path="/search" element={<Search />} />
             <Route path="/contacts" element={<Contacts />} />
             <Route path="/profile" element={<Profile />} />
