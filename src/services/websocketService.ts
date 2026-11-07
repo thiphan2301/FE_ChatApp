@@ -102,7 +102,6 @@ class WebSocketService {
     }
 
     public off(event: string, handler: MessageListener): void {
-        const existing = this.handlers.get(event) ?? [];
         this.handlers.set(event, (this.handlers.get(event) ?? []).filter((h) => h !== handler));
     }
 

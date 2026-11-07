@@ -1,51 +1,67 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { UserAvatar } from '../common/UserAvatar';
+import { useCurrentUser } from '../../hooks/useAsyncData';
+
+const menuItems = [
+    { id: 'chat', path: '/chat', label: 'Tin nhắn', iconClass: 'fa-regular fa-comment-dots' },
+    { id: 'search', path: '/search', label: 'Tìm kiếm', iconClass: 'fa-solid fa-magnifying-glass' },
+    { id: 'contacts', path: '/contacts', label: 'Danh bạ', iconClass: 'fa-solid fa-user-group' },
+];
+
+const settingsItem = { id: 'settings', path: '/settings', label: 'Cài đặt', iconClass: 'fa-solid fa-sliders' };
 
 export const Sidebar: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    const currentUser = useCurrentUser(location.pathname);
 
-    // Dùng class name của FontAwesome icon
-    const menuItems = [
-        { id: 'chat', path: '/chat', label: 'Tin nhắn', iconClass: 'fa-regular fa-comment-dots' },
-        { id: 'search', path: '/search', label: 'Tìm kiếm', iconClass: 'fa-solid fa-magnifying-glass' },
-        { id: 'contacts', path: '/contacts', label: 'Danh bạ', iconClass: 'fa-solid fa-user-group' },
-        { id: 'profile', path: '/profile', label: 'Hồ sơ', iconClass: 'fa-regular fa-user' },
-        { id: 'settings', path: '/settings', label: 'Cài đặt', iconClass: 'fa-solid fa-gear' },
-    ];
+    const renderItem = (item: typeof settingsItem) => {
+        const isActive = location.pathname === item.path;
+        return (
+            <button
+                key={item.id}
+                onClick={() => navigate(item.path)}
+                title={item.label}
+                aria-label={item.label}
+                aria-current={isActive ? 'page' : undefined}
+                className={`flex h-11 w-11 items-center justify-center rounded-xl text-base transition-all duration-200 cursor-pointer ${
+                    isActive
+                        ? 'bg-white/15 text-white'
+                        : 'text-white/55 hover:bg-white/10 hover:text-white'
+                }`}
+            >
+                <i className={item.iconClass} aria-hidden="true"></i>
+            </button>
+        );
+    };
 
     return (
-        <aside className="w-20 bg-[#1C3A32] h-screen flex flex-col items-center py-6 text-white justify-between shrink-0 shadow-md">
+        <aside className="ui-isolated flex h-full w-[84px] shrink-0 flex-col items-center justify-between rounded-[28px] bg-forest py-7 text-white">
             <div className="flex flex-col items-center gap-8">
-
-                <div onClick={() => navigate('/chat')} className="font-serif italic font-bold text-xl tracking-wider cursor-pointer text-white/90 hover:text-white">
+                <div onClick={() => navigate('/chat')} className="font-serif italic text-2xl tracking-wide cursor-pointer text-white/90 hover:text-white">
                     Logo
                 </div>
 
-                {/* menu */}
-                <nav className="flex flex-col gap-3">
-                    {menuItems.map((item) => {
-                        const isActive = location.pathname === item.path;
-                        return (
-                            <button
-                                key={item.id}
-                                onClick={() => navigate(item.path)}
-                                title={item.label}
-                                className={`w-12 h-12 rounded-2xl flex items-center justify-center text-lg transition-all duration-200 cursor-pointer ${
-                                    isActive
-                                        ? 'bg-white/20 text-white shadow-inner'
-                                        : 'text-white/50 hover:bg-white/10 hover:text-white'
-                                }`}
-                            >
-                                <i className={item.iconClass}></i>
-                            </button>
-                        );
-                    })}
+                <nav aria-label="Điều hướng chính" className="flex flex-col gap-3">
+                    {menuItems.map(renderItem)}
                 </nav>
             </div>
 
-            <div className="w-10 h-10 rounded-full bg-emerald-700 flex items-center justify-center font-bold text-xs border-2 border-white/20 overflow-hidden cursor-pointer hover:opacity-90 transition">
-                <span className="text-white text-xs">{localStorage.getItem('username')?.substring(0, 2).toUpperCase() || 'U'}</span>
+            <div className="flex flex-col items-center gap-4">
+                {renderItem(settingsItem)}
+                <button
+                    onClick={() => navigate('/profile')}
+                    aria-label="Hồ sơ của bạn"
+                    title="Hồ sơ"
+                    className="rounded-full transition hover:opacity-90 cursor-pointer"
+                >
+                    <UserAvatar
+                        name={currentUser?.displayName ?? ''}
+                        imageUrl={currentUser?.avatarUrl}
+                        size="sm"
+                    />
+                </button>
             </div>
         </aside>
     );

@@ -4,10 +4,10 @@ import { Outlet } from 'react-router-dom';
 
 export const MainLayout: React.FC = () => {
     return (
-        <div className="flex h-screen w-full overflow-hidden bg-[#F4F4F0]">
+        <div className="flex h-screen w-full gap-[16px] overflow-hidden bg-cream p-[20px]">
             <Sidebar />
 
-            <main className="flex-1 h-full overflow-y-auto overflow-x-hidden flex">
+            <main className="flex h-full min-w-0 flex-1 overflow-x-hidden overflow-y-auto rounded-[28px] bg-paper">
                 <Outlet />
             </main>
         </div>
