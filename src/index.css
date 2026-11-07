@@ -11,7 +11,7 @@
   --accent-border: rgba(170, 59, 255, 0.5);
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+          rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
@@ -44,7 +44,7 @@
     --accent-border: rgba(192, 132, 252, 0.5);
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+            rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
   }
 
   #social .button-icon {
@@ -114,3 +114,65 @@ code {
 }
 
 @import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: 'Lora', Georgia, 'Times New Roman', serif;
+
+  --color-forest: #1f3b32;
+  --color-forest-soft: #2d5a4c;
+  --color-forest-deep: #23473c;
+  --color-sage: #e9efe8;
+  --color-sage-line: #d6e0d8;
+  --color-cream: #f5f5f2;
+  --color-paper: #faf9f6;
+  --color-sand: #eee4d7;
+  --color-bubble: #f1f1ed;
+  --color-ink: #1f2a26;
+  --color-slate: #5f6e68;
+  --color-mist: #98a39e;
+  --color-line: #e8e9e4;
+  --color-danger: #c0392b;
+  --color-danger-soft: #fbeceb;
+}
+
+.ui-isolated {
+  --spacing: 4px;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+  --text-4xl: 36px;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 24px;
+  --radius-4xl: 32px;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  letter-spacing: normal;
+  color: var(--color-ink);
+  color-scheme: light;
+}
+
+.ui-isolated :where(h1, h2, p) {
+  all: revert-layer;
+}
+
+@layer base {
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-forest-soft);
+    outline-offset: 2px;
+  }
+}
