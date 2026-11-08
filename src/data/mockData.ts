@@ -23,14 +23,12 @@ const at = (hours: number, minutes: number, daysAgo = 0): string => {
 const memberHoaiAn: ConversationMember = {
     id: CURRENT_USER_ID,
     name: 'Nguyễn Hoài An',
-    avatarUrl: '/images/avatar-hoai-an.svg',
     role: 'admin',
     online: true,
 };
 const memberLinh: ConversationMember = {
     id: 'linh',
     name: 'Linh Nguyễn',
-    avatarUrl: '/images/avatar-linh.svg',
     role: 'member',
     online: true,
 };
@@ -173,7 +171,6 @@ export const mockProfile: UserProfile = {
     username: 'hoaian',
     bio: 'Thích những chuyến đi và những câu chuyện nhỏ. 🌿',
     statusId: 'slow-day',
-    avatarUrl: '/images/avatar-hoai-an.svg',
 };
 
 export const mockStatusOptions: StatusOption[] = [

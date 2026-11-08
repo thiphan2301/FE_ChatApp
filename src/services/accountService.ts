@@ -7,16 +7,23 @@ const LOGGED_IN_USERNAME_KEY = 'username';
 const RE_LOGIN_CODE_KEY = 're_login_code';
 const REMEMBER_ME_KEY = 'remember_me';
 const SETTINGS_STORAGE_KEY = 'chat-app.settings';
-
-let savedEdits: Partial<UserProfile> = {};
+const PROFILE_STORAGE_PREFIX = 'chat-app.profile.';
+export const PROFILE_UPDATED_EVENT = 'chat-app:profile-updated';
 
 const buildBaseProfile = (): UserProfile => {
     const username = window.localStorage.getItem(LOGGED_IN_USERNAME_KEY);
-    if (!username) return { ...mockProfile };
+    if (!username) return { ...mockProfile, avatarUrl: undefined };
     return { ...mockProfile, id: username, displayName: username, username, avatarUrl: undefined };
 };
 
-const readProfile = (): UserProfile => ({ ...buildBaseProfile(), ...savedEdits });
+const getProfileStorageKey = (): string =>
+    `${PROFILE_STORAGE_PREFIX}${window.localStorage.getItem(LOGGED_IN_USERNAME_KEY) ?? mockProfile.id}`;
+
+const readProfile = (): UserProfile => {
+    const baseProfile = buildBaseProfile();
+    const storedProfile = window.localStorage.getItem(getProfileStorageKey());
+    return storedProfile ? { ...baseProfile, ...(JSON.parse(storedProfile) as Partial<UserProfile>) } : baseProfile;
+};
 
 export const getCurrentUser = async (): Promise<UserProfile> => {
     await simulateLatency();
@@ -30,8 +37,10 @@ export const getStatusOptions = async (): Promise<StatusOption[]> => {
 
 export const updateProfile = async (payload: UpdateProfilePayload): Promise<UserProfile> => {
     await simulateLatency(400);
-    savedEdits = { ...savedEdits, ...payload };
-    return readProfile();
+    const updatedProfile = { ...readProfile(), ...payload };
+    window.localStorage.setItem(getProfileStorageKey(), JSON.stringify(updatedProfile));
+    window.dispatchEvent(new Event(PROFILE_UPDATED_EVENT));
+    return updatedProfile;
 };
 
 const readStoredSettings = (): AccountSettings => {

@@ -1,0 +1,125 @@
+.search-container {
+    display: flex;
+    flex: 1;
+    height: 100%;
+    background-color: #F4F4F0;
+}
+
+.search-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background-color: #ffffff;
+    border-right: 1px solid #e5e7eb;
+    padding: 32px;
+    overflow-y: auto;
+}
+
+.search-title {
+    font-size: 24px;
+    font-weight: bold;
+    color: #1f2937;
+    margin-bottom: 4px;
+}
+
+.search-subtitle {
+    font-size: 14px;
+    color: #6b7280;
+    margin-bottom: 24px;
+}
+
+.search-input-box {
+    position: relative;
+    margin-bottom: 24px;
+}
+
+.search-input-icon {
+    position: absolute;
+    top: 50%;
+    left: 16px;
+    transform: translateY(-50%);
+    color: #9ca3af;
+}
+
+.search-input-field {
+    width: 100%;
+    background-color: #F4F4F0;
+    font-size: 14px;
+    color: #1f2937;
+    padding: 12px 16px 12px 44px;
+    border-radius: 16px;
+    border: 1px solid transparent;
+    outline: none;
+}
+
+.search-input-field:focus {
+    border-color: #d1d5db;
+}
+
+.search-clear-btn {
+    position: absolute;
+    top: 50%;
+    right: 16px;
+    transform: translateY(-50%);
+    background: #e5e7eb;
+    border: none;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    font-size: 11px;
+    color: #4b5563;
+}
+
+.search-tabs {
+    display: flex;
+    gap: 24px;
+    border-bottom: 1px solid #f3f4f6;
+    padding-bottom: 12px;
+    margin-bottom: 24px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #6b7280;
+}
+
+.search-tab-item {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding-bottom: 4px;
+    color: #6b7280;
+}
+
+.search-tab-active {
+    color: #111827;
+    font-weight: 600;
+    border-bottom: 2px solid #1C3A32;
+}
+
+.search-badge {
+    font-size: 12px;
+    background-color: #f3f4f6;
+    padding: 2px 6px;
+    border-radius: 9999px;
+    margin-left: 4px;
+}
+
+.search-section-title {
+    font-size: 12px;
+    font-weight: bold;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 12px;
+}
+
+.search-sidebar {
+    width: 320px;
+    background-color: #FCFBFA;
+    border-left: 1px solid #e5e7eb;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}

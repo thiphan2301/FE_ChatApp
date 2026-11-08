@@ -110,7 +110,6 @@ const ConversationItem = ({
                     name={conversation.name}
                     imageUrl={conversation.avatarUrl}
                     online={conversation.online}
-                    tone="soft"
                 />
                 <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">

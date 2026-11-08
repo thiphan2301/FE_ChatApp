@@ -1,23 +1,21 @@
 import React from 'react';
-import { getInitials } from '../../utils/helpers';
+import defaultAvatar from '../../assets/avatar.png';
 
 type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
-type AvatarTone = 'dark' | 'soft';
 
 interface UserAvatarProps {
     name: string;
     online?: boolean;
     size?: AvatarSize;
     imageUrl?: string;
-    tone?: AvatarTone;
 }
 
 const SIZE_CLASSES: Record<AvatarSize, string> = {
-    xs: 'w-5 h-5 text-[8px]',
-    sm: 'w-8 h-8 text-xs',
-    md: 'w-12 h-12 text-sm',
-    lg: 'w-16 h-16 text-lg',
-    xl: 'w-20 h-20 text-2xl',
+    xs: 'w-5 h-5',
+    sm: 'w-8 h-8',
+    md: 'w-12 h-12',
+    lg: 'w-16 h-16',
+    xl: 'w-20 h-20',
 };
 
 const DOT_SIZES: Record<AvatarSize, string> = {
@@ -28,27 +26,19 @@ const DOT_SIZES: Record<AvatarSize, string> = {
     xl: 'w-4 h-4',
 };
 
-const TONE_CLASSES: Record<AvatarTone, string> = {
-    dark: 'bg-[#1C3A32] text-white font-bold shadow-sm',
-    soft: 'bg-sand text-forest-soft font-semibold',
-};
-
 export const UserAvatar: React.FC<UserAvatarProps> = ({
-                                                          name,
-                                                          online = false,
-                                                          size = 'md',
-                                                          imageUrl,
-                                                          tone = 'dark',
-                                                      }) => {
+    name,
+    online = false,
+    size = 'md',
+    imageUrl,
+}) => {
     return (
         <div className="relative shrink-0">
-            <div className={`${SIZE_CLASSES[size]} ${TONE_CLASSES[tone]} rounded-full flex items-center justify-center overflow-hidden shrink-0`}>
-                {imageUrl ? (
-                    <img src={imageUrl} alt={name} className="w-full h-full object-cover" />
-                ) : (
-                    <span>{getInitials(name)}</span>
-                )}
-            </div>
+            <img
+                src={imageUrl || defaultAvatar}
+                alt={name}
+                className={`${SIZE_CLASSES[size]} rounded-full object-cover shrink-0`}
+            />
             {online && (
                 <span className={`absolute bottom-0 right-0 ${DOT_SIZES[size]} bg-emerald-500 border-2 border-white rounded-full`}></span>
             )}

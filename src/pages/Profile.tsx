@@ -13,7 +13,7 @@ import {
     countCharacters,
     fieldInputClass,
     limitCharacters,
-    readFileAsDataUrl,
+    readAvatarAsDataUrl,
     validateAvatarFile,
     validateDisplayName,
     validateUsername,
@@ -95,7 +95,11 @@ const AvatarUploader = ({ name, avatarUrl, onChange }: AvatarUploaderProps) => {
         const validationError = validateAvatarFile(file);
         setError(validationError);
         if (validationError) return;
-        onChange(await readFileAsDataUrl(file));
+        try {
+            onChange(await readAvatarAsDataUrl(file));
+        } catch {
+            setError('Không thể đọc ảnh. Vui lòng chọn ảnh khác.');
+        }
     };
 
     return (

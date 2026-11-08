@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
-import { getCurrentUser } from '../services/accountService';
+import { getCurrentUser, PROFILE_UPDATED_EVENT } from '../services/accountService';
 import type { UserProfile } from '../types';
 
 type AsyncStatus = 'loading' | 'error' | 'ready';
@@ -85,13 +85,18 @@ export const useCurrentUser = (refreshKey: string) => {
 
     useEffect(() => {
         let cancelled = false;
-        getCurrentUser()
+        const loadUser = () => {
+            getCurrentUser()
             .then((profile) => {
                 if (!cancelled) setUser(profile);
             })
             .catch(() => undefined);
+        };
+        loadUser();
+        window.addEventListener(PROFILE_UPDATED_EVENT, loadUser);
         return () => {
             cancelled = true;
+            window.removeEventListener(PROFILE_UPDATED_EVENT, loadUser);
         };
     }, [refreshKey]);
 
