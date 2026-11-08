@@ -32,7 +32,7 @@ const MemberList = ({ members, canAddMembers }: MemberListProps) => {
             <ul className="flex flex-col gap-3">
                 {visibleMembers.map((member) => (
                     <li key={member.id} className="flex items-center gap-3">
-                        <UserAvatar name={member.name} imageUrl={member.avatarUrl} size="sm" tone="soft" />
+                        <UserAvatar name={member.name} imageUrl={member.avatarUrl} size="sm" />
                         <div className="min-w-0">
                             <p className="truncate text-[13px] font-semibold text-ink">{member.name}</p>
                             <p className="text-[11px] text-mist">{describeMember(member)}</p>
@@ -111,7 +111,7 @@ export const GroupInfoPanel = ({ conversation, onClose, onToggleMuted, onLeave }
             </div>
 
             <div className="flex flex-col items-center gap-1 px-5 pb-5 pt-3 text-center">
-                <UserAvatar name={conversation.name} imageUrl={conversation.avatarUrl} size="lg" tone="soft" />
+                <UserAvatar name={conversation.name} imageUrl={conversation.avatarUrl} size="lg" />
                 <h3 className="mt-2 text-lg font-semibold text-ink">{conversation.name}</h3>
                 <p className="text-xs text-slate">{conversation.description}</p>
             </div>

@@ -78,7 +78,7 @@ const SeenBy = ({ members }: { members: ConversationMember[] }) => {
       <span className="flex -space-x-1">
         {members.slice(0, SEEN_AVATAR_LIMIT).map((member) => (
             <span key={member.id} className="rounded-full ring-2 ring-white">
-            <UserAvatar name={member.name} imageUrl={member.avatarUrl} size="xs" tone="soft" />
+            <UserAvatar name={member.name} imageUrl={member.avatarUrl} size="xs" />
           </span>
         ))}
       </span>
@@ -186,7 +186,7 @@ const getSubtitle = (conversation: Conversation): string => {
 const ChatHeader = ({ conversation, infoPanelOpen, onToggleInfoPanel }: ChatHeaderProps) => (
     <header className="flex shrink-0 items-center justify-between border-b border-line px-6 py-4">
         <div className="flex min-w-0 items-center gap-3">
-            <UserAvatar name={conversation.name} imageUrl={conversation.avatarUrl} size="sm" tone="soft" />
+            <UserAvatar name={conversation.name} imageUrl={conversation.avatarUrl} size="sm" />
             <div className="min-w-0">
                 <h2 className="truncate text-[15px] font-semibold text-ink">{conversation.name}</h2>
                 <p className="text-xs text-slate">{getSubtitle(conversation)}</p>

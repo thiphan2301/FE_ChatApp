@@ -1,12 +1,3 @@
-export const getInitials = (name: string): string => {
-    const words = name.trim().split(/\s+/).filter(Boolean);
-    if (words.length === 0) return 'US';
-    if (words.length >= 2) {
-        return (words[0][0] + words[words.length - 1][0]).toUpperCase();
-    }
-    return name.trim().slice(0, 2).toUpperCase();
-};
-
 const UNITS = ['B', 'KB', 'MB', 'GB'];
 
 export const formatFileSize = (bytes: number): string => {
@@ -93,13 +84,24 @@ export const countCharacters = (text: string): number => Array.from(text).length
 export const limitCharacters = (text: string, maxLength: number): string =>
     Array.from(text).slice(0, maxLength).join('');
 
-export const readFileAsDataUrl = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-    });
+export const readAvatarAsDataUrl = async (file: File): Promise<string> => {
+    const image = await createImageBitmap(file);
+    const maxDimension = 256;
+    const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+        image.close();
+        throw new Error('Không thể xử lý ảnh đại diện.');
+    }
+
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    image.close();
+    return canvas.toDataURL('image/webp', 0.85);
+};
 
 const DEFAULT_LATENCY_MS = 250;
 
