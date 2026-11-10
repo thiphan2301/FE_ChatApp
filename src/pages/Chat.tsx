@@ -1,9 +1,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { UserAvatar } from '../components/common/UserAvatar';
 import { wsService, type ServerResponse } from '../services/websocketService';
 
 export default function Chat() {
+    const location = useLocation();
+    const routeState = location.state;
+    const initialChatTarget =
+        typeof routeState === 'object' &&
+        routeState !== null &&
+        'chatWith' in routeState &&
+        typeof routeState.chatWith === 'string'
+            ? routeState.chatWith
+            : null;
+    const chatTargetRef = useRef(initialChatTarget);
     const [chatList, setChatList] = useState<any[]>([]);
     const [selectedChat, setSelectedChat] = useState<any | null>(null);
     const [messages, setMessages] = useState<any[]>([]);
@@ -72,11 +83,23 @@ export default function Chat() {
                     //tắt trạng thái loading
                     setIsLoading(false);
 
-                    // Nếu có danh sách và chưa chọn chat nào, tự động chọn người đầu tiên và tải tin nhắn luôn
-                    if (list.length > 0 && !selectedChat) {
-                        const firstChat = list[0];
-                        setSelectedChat(firstChat);
-                        fetchMessagesForChat(firstChat);
+                    // Ưu tiên người dùng được chuyển đến từ trang tìm kiếm.
+                    if (!selectedChat) {
+                        const targetUsername = chatTargetRef.current;
+                        const targetChat = targetUsername
+                            ? list.find(
+                                (chat: any) =>
+                                    chat.type === 0 &&
+                                    typeof chat.name === 'string' &&
+                                    chat.name.toLocaleLowerCase() === targetUsername.toLocaleLowerCase(),
+                            ) ?? { name: targetUsername, type: 0 }
+                            : list[0];
+
+                        if (targetChat) {
+                            setSelectedChat(targetChat);
+                            fetchMessagesForChat(targetChat);
+                            chatTargetRef.current = null;
+                        }
                     }
                 } else if (response.event === 'GET_PEOPLE_CHAT_MES' || response.event === 'GET_ROOM_CHAT_MES') {
                     // Đảm bảo dữ liệu nhận về là mảng
