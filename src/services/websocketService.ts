@@ -46,9 +46,12 @@ class WebSocketService {
                 const eventHandlers = this.handlers.get(response.event) ?? [];
                 eventHandlers.forEach((h) => h(response));
 
-                // Tự động cập nhật RE_LOGIN_CODE nếu có trong response
                 if (response.status === 'success' && response.data?.RE_LOGIN_CODE) {
-                    localStorage.setItem('re_login_code', response.data.RE_LOGIN_CODE);
+                    if (localStorage.getItem('re_login_code')) {
+                        localStorage.setItem('re_login_code', response.data.RE_LOGIN_CODE);
+                    } else if (sessionStorage.getItem('re_login_code')) {
+                        sessionStorage.setItem('re_login_code', response.data.RE_LOGIN_CODE);
+                    }
                 }
             } catch (error) {
                 console.error('Lỗi parse JSON từ WebSocket:', error);
@@ -140,16 +143,22 @@ class WebSocketService {
         });
     }
 
-    // Kiểm tra có session localStorage không
-    public hasSession(): boolean {
-        return !!(localStorage.getItem('username') && localStorage.getItem('re_login_code'));
+    public getSession(): { username: string; code: string } | null {
+        const username = localStorage.getItem('username') || sessionStorage.getItem('username');
+        const code = localStorage.getItem('re_login_code') || sessionStorage.getItem('re_login_code');
+        if (username && code) return { username, code };
+        return null;
     }
 
-    // Xoá session và đóng kết nối
+    public hasSession(): boolean {
+        return !!this.getSession();
+    }
+
     public logout(): void {
         localStorage.removeItem('username');
         localStorage.removeItem('re_login_code');
-        localStorage.removeItem('remember_me');
+        sessionStorage.removeItem('username');
+        sessionStorage.removeItem('re_login_code');
         this.ws?.close();
         this.ws = null;
         this.listeners = [];
