@@ -1,42 +1,46 @@
 import React from 'react';
+import defaultAvatar from '../../assets/avatar.png';
+
+type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 interface UserAvatarProps {
     name: string;
     online?: boolean;
-    size?: 'sm' | 'md' | 'lg';
+    size?: AvatarSize;
+    imageUrl?: string;
 }
 
-export const UserAvatar: React.FC<UserAvatarProps> = ({ name, online = false, size = 'md' }) => {
-    const sizeClasses = {
-        sm: 'w-8 h-8 text-xs',
-        md: 'w-12 h-12 text-sm',
-        lg: 'w-16 h-16 text-lg',
-    };
+const SIZE_CLASSES: Record<AvatarSize, string> = {
+    xs: 'w-5 h-5',
+    sm: 'w-8 h-8',
+    md: 'w-12 h-12',
+    lg: 'w-16 h-16',
+    xl: 'w-20 h-20',
+};
 
-    const dotSizes = {
-        sm: 'w-2 h-2',
-        md: 'w-3 h-3',
-        lg: 'w-4 h-4',
-    };
+const DOT_SIZES: Record<AvatarSize, string> = {
+    xs: 'w-1.5 h-1.5',
+    sm: 'w-2 h-2',
+    md: 'w-3 h-3',
+    lg: 'w-4 h-4',
+    xl: 'w-4 h-4',
+};
 
-    // Hàm lấy chữ cái đầu, vd Linh Nguyễn -> LN
-    const getInitials = (str: string) => {
-        if (!str) return 'US';
-        const words = str.trim().split(' ');
-        if (words.length >= 2) {
-            // Lấy chữ cái đầu của từ đầu tiên và từ cuối cùng
-            return (words[0][0] + words[words.length - 1][0]).toUpperCase();
-        }
-        return str.slice(0, 2).toUpperCase();
-    };
-
+export const UserAvatar: React.FC<UserAvatarProps> = ({
+    name,
+    online = false,
+    size = 'md',
+    imageUrl,
+}) => {
     return (
         <div className="relative shrink-0">
-            <div className={`${sizeClasses[size]} rounded-full bg-[#1C3A32] text-white flex items-center justify-center font-bold overflow-hidden shadow-sm shrink-0`}>
-                <span>{getInitials(name)}</span>
-            </div>
+            <img
+                src={imageUrl || defaultAvatar}
+                alt={name}
+                className={`${SIZE_CLASSES[size]} rounded-full object-cover shrink-0`}
+            />
             {online && (
-                <span className={`absolute bottom-0 right-0 ${dotSizes[size]} bg-emerald-500 border-2 border-white rounded-full`}></span>
+                <span className={`absolute bottom-0 right-0 ${DOT_SIZES[size]} bg-emerald-500 border-2 border-white rounded-full`}></span>
             )}
         </div>
     );
