@@ -46,9 +46,12 @@ class WebSocketService {
                 const eventHandlers = this.handlers.get(response.event) ?? [];
                 eventHandlers.forEach((h) => h(response));
 
-                // Tự động cập nhật RE_LOGIN_CODE nếu có trong response
                 if (response.status === 'success' && response.data?.RE_LOGIN_CODE) {
-                    localStorage.setItem('re_login_code', response.data.RE_LOGIN_CODE);
+                    if (localStorage.getItem('re_login_code')) {
+                        localStorage.setItem('re_login_code', response.data.RE_LOGIN_CODE);
+                    } else if (sessionStorage.getItem('re_login_code')) {
+                        sessionStorage.setItem('re_login_code', response.data.RE_LOGIN_CODE);
+                    }
                 }
             } catch (error) {
                 console.error('Lỗi parse JSON từ WebSocket:', error);
@@ -107,6 +110,59 @@ class WebSocketService {
 
     public sendAction(event: string, data?: any): void {
         this.sendMessage(event, data || {});
+    }
+
+    // Promise-based request với timeout (dùng cho Login, Register)
+    public request<T extends ServerResponse = ServerResponse>(
+        sendEvent: string,
+        listenEvent: string,
+        data?: Record<string, unknown>,
+        timeoutMs = 10000,
+    ): Promise<T> {
+        return new Promise((resolve, reject) => {
+            let timer: ReturnType<typeof setTimeout>;
+
+            const handler = (msg: ServerResponse) => {
+                clearTimeout(timer);
+                this.off(listenEvent, handler);
+                resolve(msg as T);
+            };
+
+            timer = setTimeout(() => {
+                this.off(listenEvent, handler);
+                reject(new Error('Yêu cầu quá thời gian chờ. Vui lòng thử lại.'));
+            }, timeoutMs);
+
+            this.onOpen(() => {
+                this.on(listenEvent, handler);
+                this.sendMessage(sendEvent, data ?? {});
+            });
+
+            // Kích hoạt kết nối nếu chưa có
+            this.connect();
+        });
+    }
+
+    public getSession(): { username: string; code: string } | null {
+        const username = localStorage.getItem('username') || sessionStorage.getItem('username');
+        const code = localStorage.getItem('re_login_code') || sessionStorage.getItem('re_login_code');
+        if (username && code) return { username, code };
+        return null;
+    }
+
+    public hasSession(): boolean {
+        return !!this.getSession();
+    }
+
+    public logout(): void {
+        localStorage.removeItem('username');
+        localStorage.removeItem('re_login_code');
+        sessionStorage.removeItem('username');
+        sessionStorage.removeItem('re_login_code');
+        this.ws?.close();
+        this.ws = null;
+        this.listeners = [];
+        this.handlers.clear();
     }
 }
 

@@ -1,8 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from '../components/layout/AuthLayout';
 import { wsService } from '../services/websocketService';
-
 
 export default function Login() {
   const navigate = useNavigate();
@@ -12,64 +11,70 @@ export default function Login() {
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const handlerRef = useRef<((data: unknown) => void) | null>(null);
 
   useEffect(() => {
-    return () => {
-      if (handlerRef.current) {
-        wsService.off('LOGIN', handlerRef.current);
-      }
-    };
+    const savedUser = localStorage.getItem('saved_username');
+    if (savedUser) {
+      setUsername(savedUser);
+      setRememberMe(true);
+    }
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (!username.trim() || !password.trim()) {
-      setError('Vui lòng nhập đầy đủ thông tin.');
+    const cleanUser = username.trim();
+
+    if (!cleanUser) {
+      setError('Vui lòng nhập tên đăng nhập.');
+      return;
+    }
+    if (!password.trim()) {
+      setError('Vui lòng nhập mật khẩu.');
       return;
     }
 
     setIsLoading(true);
-
     try {
-      await wsService.connect();
+      const msg = await wsService.request<{
+        status: string;
+        data?: { RE_LOGIN_CODE: string };
+        mes?: string;
+      }>('LOGIN', 'LOGIN', { user: cleanUser, pass: password });
 
-      const handler = (data: unknown) => {
-        const msg = data as { status: string; data?: { RE_LOGIN_CODE: string }; mes?: string };
-        setIsLoading(false);
-        wsService.off('LOGIN', handler);
+      if (msg.status === 'success' && msg.data?.RE_LOGIN_CODE) {
+        localStorage.setItem('username', cleanUser);
 
-        if (msg.status === 'success' && msg.data?.RE_LOGIN_CODE) {
-          localStorage.setItem('username', username);
+        if (rememberMe) {
           localStorage.setItem('re_login_code', msg.data.RE_LOGIN_CODE);
-          if (rememberMe) {
-            localStorage.setItem('remember_me', 'true');
-          }
-          navigate('/chat');
+          localStorage.setItem('remember_me', 'true');
+          localStorage.setItem('saved_username', cleanUser);
+          sessionStorage.removeItem('re_login_code');
         } else {
-          setError(msg.mes ?? 'Đăng nhập thất bại. Vui lòng thử lại.');
+          sessionStorage.setItem('re_login_code', msg.data.RE_LOGIN_CODE);
+          localStorage.removeItem('re_login_code');
+          localStorage.removeItem('remember_me');
+          localStorage.removeItem('saved_username');
         }
-      };
 
-      handlerRef.current = handler;
-      wsService.on('LOGIN', handler);
-      wsService.sendAction('LOGIN', { user: username, pass: password });
-    } catch {
+        navigate('/chat');
+      } else {
+        setError(msg.mes ?? 'Tên đăng nhập hoặc mật khẩu không chính xác.');
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Đăng nhập thất bại. Vui lòng thử lại.');
+    } finally {
       setIsLoading(false);
-      setError('Không thể kết nối đến máy chủ. Vui lòng thử lại.');
     }
   };
 
   return (
     <AuthLayout>
-      {/* Page label */}
       <p className="text-[#2D5A45]/50 text-sm font-semibold tracking-widest uppercase mb-6 -mt-2">
         Chào bạn trở lại
       </p>
 
-      {/* Heading */}
       <h1
         style={{
           fontFamily: "'Playfair Display', serif",
@@ -86,16 +91,13 @@ export default function Login() {
         Đăng nhập để tiếp tục những cuộc trò chuyện...
       </p>
 
-      {/* Error */}
       {error && (
         <div className="mb-5 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm flex items-center gap-2">
           <span>⚠</span> {error}
         </div>
       )}
 
-      {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Username */}
         <div>
           <label htmlFor="login-username" className="block text-base font-medium text-[#1A1A1A] mb-2">
             Tên đăng nhập
@@ -107,13 +109,13 @@ export default function Login() {
             onChange={(e) => setUsername(e.target.value)}
             placeholder="ten_nguoi_dung"
             autoComplete="username"
+            disabled={isLoading}
             className="w-full px-4 py-3.5 rounded-xl border border-[#D9D4CC] bg-white text-[#1A1A1A] placeholder-[#B0A9A0] text-base
                        focus:outline-none focus:ring-2 focus:ring-[#2D5A45]/30 focus:border-[#2D5A45]
-                       transition-all duration-200"
+                       disabled:opacity-60 transition-all duration-200"
           />
         </div>
 
-        {/* Password */}
         <div>
           <label htmlFor="login-password" className="block text-base font-medium text-[#1A1A1A] mb-2">
             Mật khẩu
@@ -126,9 +128,10 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••••"
               autoComplete="current-password"
+              disabled={isLoading}
               className="w-full px-4 py-3.5 pr-12 rounded-xl border border-[#D9D4CC] bg-white text-[#1A1A1A] placeholder-[#B0A9A0] text-base
                          focus:outline-none focus:ring-2 focus:ring-[#2D5A45]/30 focus:border-[#2D5A45]
-                         transition-all duration-200"
+                         disabled:opacity-60 transition-all duration-200"
             />
             <button
               type="button"
@@ -138,24 +141,30 @@ export default function Login() {
             >
               {showPassword ? (
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                    d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.8}
+                    d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                  />
                 </svg>
               ) : (
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.8}
+                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                  />
                 </svg>
               )}
             </button>
           </div>
         </div>
 
-        {/* Remember me + Forgot */}
-        <div className="flex items-center justify-between">
-          <label className="flex items-center gap-2 cursor-pointer group">
+        <div className="flex items-center">
+          <label className="flex items-center gap-2 cursor-pointer group select-none">
             <div className="relative">
               <input
                 id="remember-me"
@@ -165,11 +174,11 @@ export default function Login() {
                 className="sr-only"
               />
               <div
-                className={`w-4 h-4 rounded flex items-center justify-center border transition-all duration-200
-                  ${rememberMe
+                className={`w-4 h-4 rounded flex items-center justify-center border transition-all duration-200 ${
+                  rememberMe
                     ? 'bg-[#2D5A45] border-[#2D5A45]'
                     : 'bg-white border-[#D9D4CC] group-hover:border-[#2D5A45]'
-                  }`}
+                }`}
                 onClick={() => setRememberMe(!rememberMe)}
               >
                 {rememberMe && (
@@ -179,23 +188,16 @@ export default function Login() {
                 )}
               </div>
             </div>
-            <span className="text-sm text-[#6B6B6B] select-none">Ghi nhớ đăng nhập</span>
+            <span className="text-sm text-[#6B6B6B] group-hover:text-[#1A1A1A] transition-colors">
+              Ghi nhớ đăng nhập
+            </span>
           </label>
-
-          <Link
-            to="/forgot-password"
-            className="text-sm text-[#2D5A45] font-medium hover:underline transition-all"
-          >
-            Quên mật khẩu?
-          </Link>
         </div>
 
-        {/* Submit Button */}
         <button
-          id="login-submit"
           type="submit"
           disabled={isLoading}
-          className="w-full py-3.5 px-6 rounded-xl font-semibold text-white text-sm
+          className="w-full py-3.5 px-6 rounded-xl font-semibold text-white text-base
                      flex items-center justify-center gap-2 transition-all duration-200
                      disabled:opacity-60 disabled:cursor-not-allowed
                      hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0"
@@ -215,20 +217,14 @@ export default function Login() {
               Đang đăng nhập...
             </>
           ) : (
-            <>
-              <span>→</span> Đăng nhập
-            </>
+            <>→ Đăng nhập</>
           )}
         </button>
       </form>
 
-      {/* Register link */}
       <p className="mt-6 text-center text-sm text-[#6B6B6B]">
         Chưa có tài khoản?{' '}
-        <Link
-          to="/register"
-          className="text-[#2D5A45] font-semibold hover:underline transition-all"
-        >
+        <Link to="/register" className="text-[#2D5A45] font-semibold hover:underline transition-all">
           Đăng ký ngay
         </Link>
       </p>
