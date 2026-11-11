@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from '../components/layout/AuthLayout';
 import { wsService } from '../services/websocketService';
@@ -12,53 +12,42 @@ export default function Login() {
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const handlerRef = useRef<((data: unknown) => void) | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (handlerRef.current) {
-        wsService.off('LOGIN', handlerRef.current);
-      }
-    };
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (!username.trim() || !password.trim()) {
-      setError('Vui lòng nhập đầy đủ thông tin.');
+    if (!username.trim()) {
+      setError('Vui lòng nhập tên đăng nhập.');
+      return;
+    }
+    if (!password.trim()) {
+      setError('Vui lòng nhập mật khẩu.');
       return;
     }
 
     setIsLoading(true);
-
     try {
-      await wsService.connect();
+      const msg = await wsService.request<{
+        status: string;
+        data?: { RE_LOGIN_CODE: string };
+        mes?: string;
+      }>('LOGIN', 'LOGIN', { user: username, pass: password });
 
-      const handler = (data: unknown) => {
-        const msg = data as { status: string; data?: { RE_LOGIN_CODE: string }; mes?: string };
-        setIsLoading(false);
-        wsService.off('LOGIN', handler);
-
-        if (msg.status === 'success' && msg.data?.RE_LOGIN_CODE) {
-          localStorage.setItem('username', username);
-          localStorage.setItem('re_login_code', msg.data.RE_LOGIN_CODE);
-          if (rememberMe) {
-            localStorage.setItem('remember_me', 'true');
-          }
-          navigate('/chat');
-        } else {
-          setError(msg.mes ?? 'Đăng nhập thất bại. Vui lòng thử lại.');
+      if (msg.status === 'success' && msg.data?.RE_LOGIN_CODE) {
+        localStorage.setItem('username', username);
+        localStorage.setItem('re_login_code', msg.data.RE_LOGIN_CODE);
+        if (rememberMe) {
+          localStorage.setItem('remember_me', 'true');
         }
-      };
-
-      handlerRef.current = handler;
-      wsService.on('LOGIN', handler);
-      wsService.sendAction('LOGIN', { user: username, pass: password });
-    } catch {
+        navigate('/chat');
+      } else {
+        setError(msg.mes ?? 'Tên đăng nhập hoặc mật khẩu không đúng.');
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Đăng nhập thất bại. Vui lòng thử lại.');
+    } finally {
       setIsLoading(false);
-      setError('Không thể kết nối đến máy chủ. Vui lòng thử lại.');
     }
   };
 
@@ -107,9 +96,10 @@ export default function Login() {
             onChange={(e) => setUsername(e.target.value)}
             placeholder="ten_nguoi_dung"
             autoComplete="username"
+            disabled={isLoading}
             className="w-full px-4 py-3.5 rounded-xl border border-[#D9D4CC] bg-white text-[#1A1A1A] placeholder-[#B0A9A0] text-base
                        focus:outline-none focus:ring-2 focus:ring-[#2D5A45]/30 focus:border-[#2D5A45]
-                       transition-all duration-200"
+                       disabled:opacity-60 transition-all duration-200"
           />
         </div>
 
@@ -126,9 +116,10 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••••"
               autoComplete="current-password"
+              disabled={isLoading}
               className="w-full px-4 py-3.5 pr-12 rounded-xl border border-[#D9D4CC] bg-white text-[#1A1A1A] placeholder-[#B0A9A0] text-base
                          focus:outline-none focus:ring-2 focus:ring-[#2D5A45]/30 focus:border-[#2D5A45]
-                         transition-all duration-200"
+                         disabled:opacity-60 transition-all duration-200"
             />
             <button
               type="button"
@@ -192,10 +183,9 @@ export default function Login() {
 
         {/* Submit Button */}
         <button
-          id="login-submit"
           type="submit"
           disabled={isLoading}
-          className="w-full py-3.5 px-6 rounded-xl font-semibold text-white text-sm
+          className="w-full py-3.5 px-6 rounded-xl font-semibold text-white text-base
                      flex items-center justify-center gap-2 transition-all duration-200
                      disabled:opacity-60 disabled:cursor-not-allowed
                      hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0"
@@ -215,9 +205,7 @@ export default function Login() {
               Đang đăng nhập...
             </>
           ) : (
-            <>
-              <span>→</span> Đăng nhập
-            </>
+            <>→ Đăng nhập</>
           )}
         </button>
       </form>
@@ -225,10 +213,7 @@ export default function Login() {
       {/* Register link */}
       <p className="mt-6 text-center text-sm text-[#6B6B6B]">
         Chưa có tài khoản?{' '}
-        <Link
-          to="/register"
-          className="text-[#2D5A45] font-semibold hover:underline transition-all"
-        >
+        <Link to="/register" className="text-[#2D5A45] font-semibold hover:underline transition-all">
           Đăng ký ngay
         </Link>
       </p>

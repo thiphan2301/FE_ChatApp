@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from '../components/layout/AuthLayout';
 import { wsService } from '../services/websocketService';
@@ -15,15 +15,6 @@ export default function Register() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const handlerRef = useRef<((data: unknown) => void) | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (handlerRef.current) {
-        wsService.off('REGISTER', handlerRef.current);
-      }
-    };
-  }, []);
 
   const validateUsername = (val: string) => /^[a-zA-Z0-9_]+$/.test(val);
 
@@ -32,12 +23,20 @@ export default function Register() {
     setError('');
     setSuccess('');
 
-    if (!username.trim() || !password.trim()) {
-      setError('Vui lòng nhập đầy đủ thông tin.');
+    if (!username.trim()) {
+      setError('Vui lòng nhập tên đăng nhập.');
       return;
     }
     if (!validateUsername(username)) {
-      setError('Tên đăng nhập chỉ được dùng chữ cái, số và dấu gạch dưới.');
+      setError('Tên đăng nhập chỉ được dùng chữ cái, số và dấu gạch dưới (_).');
+      return;
+    }
+    if (username.length < 3) {
+      setError('Tên đăng nhập phải có ít nhất 3 ký tự.');
+      return;
+    }
+    if (!password) {
+      setError('Vui lòng nhập mật khẩu.');
       return;
     }
     if (password.length < 6) {
@@ -54,29 +53,23 @@ export default function Register() {
     }
 
     setIsLoading(true);
-
     try {
-      await wsService.connect();
+      const msg = await wsService.request<{ status: string; mes?: string }>(
+        'REGISTER',
+        'REGISTER',
+        { user: username, pass: password },
+      );
 
-      const handler = (data: unknown) => {
-        const msg = data as { status: string; data?: string; mes?: string };
-        setIsLoading(false);
-        wsService.off('REGISTER', handler);
-
-        if (msg.status === 'success') {
-          setSuccess('Tạo tài khoản thành công! Đang chuyển đến đăng nhập...');
-          setTimeout(() => navigate('/login'), 2000);
-        } else {
-          setError(msg.mes ?? 'Đăng ký thất bại. Vui lòng thử lại.');
-        }
-      };
-
-      handlerRef.current = handler;
-      wsService.on('REGISTER', handler);
-      wsService.sendAction('REGISTER', { user: username, pass: password });
-    } catch {
+      if (msg.status === 'success') {
+        setSuccess('Tạo tài khoản thành công! Đang chuyển đến đăng nhập...');
+        setTimeout(() => navigate('/login'), 2000);
+      } else {
+        setError(msg.mes ?? 'Đăng ký thất bại. Tên đăng nhập có thể đã tồn tại.');
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Đăng ký thất bại. Vui lòng thử lại.');
+    } finally {
       setIsLoading(false);
-      setError('Không thể kết nối đến máy chủ. Vui lòng thử lại.');
     }
   };
 
@@ -86,6 +79,21 @@ export default function Register() {
     if (password.length < 10) return { level: 2, label: 'Trung bình', color: '#E0A85A' };
     return { level: 3, label: 'Mạnh', color: '#2D5A45' };
   })();
+
+  // Shared eye-off icon
+  const EyeOffIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+        d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+    </svg>
+  );
+  const EyeIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+    </svg>
+  );
 
   return (
     <AuthLayout>
@@ -137,12 +145,13 @@ export default function Register() {
             onChange={(e) => setUsername(e.target.value)}
             placeholder="ten_nguoi_dung"
             autoComplete="username"
+            disabled={isLoading}
             className="w-full px-4 py-3.5 rounded-xl border border-[#D9D4CC] bg-white text-[#1A1A1A] placeholder-[#B0A9A0] text-base
                        focus:outline-none focus:ring-2 focus:ring-[#2D5A45]/30 focus:border-[#2D5A45]
-                       transition-all duration-200"
+                       disabled:opacity-60 transition-all duration-200"
           />
           <p className="mt-1.5 text-xs text-[#9E9690]">
-            Chỉ dùng chữ cái, số và dấu gạch dưới (_)
+            Chỉ dùng chữ cái, số và dấu gạch dưới (_), tối thiểu 3 ký tự.
           </p>
         </div>
 
@@ -159,9 +168,10 @@ export default function Register() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••••"
               autoComplete="new-password"
+              disabled={isLoading}
               className="w-full px-4 py-3.5 pr-12 rounded-xl border border-[#D9D4CC] bg-white text-[#1A1A1A] placeholder-[#B0A9A0] text-base
                          focus:outline-none focus:ring-2 focus:ring-[#2D5A45]/30 focus:border-[#2D5A45]
-                         transition-all duration-200"
+                         disabled:opacity-60 transition-all duration-200"
             />
             <button
               type="button"
@@ -169,19 +179,7 @@ export default function Register() {
               className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9E9690] hover:text-[#2D5A45] transition-colors p-1"
               aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
             >
-              {showPassword ? (
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                    d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                </svg>
-              )}
+              {showPassword ? <EyeOffIcon /> : <EyeIcon />}
             </button>
           </div>
 
@@ -204,10 +202,7 @@ export default function Register() {
               </p>
             </div>
           )}
-
-          <p className="mt-1.5 text-xs text-[#9E9690]">
-            Ít nhất 8 ký tự gồm chữ và số.
-          </p>
+          <p className="mt-1.5 text-xs text-[#9E9690]">Ít nhất 6 ký tự.</p>
         </div>
 
         {/* Confirm Password */}
@@ -223,9 +218,10 @@ export default function Register() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="••••••••••"
               autoComplete="new-password"
+              disabled={isLoading}
               className="w-full px-4 py-3.5 pr-12 rounded-xl border border-[#D9D4CC] bg-white text-[#1A1A1A] placeholder-[#B0A9A0] text-base
                          focus:outline-none focus:ring-2 focus:ring-[#2D5A45]/30 focus:border-[#2D5A45]
-                         transition-all duration-200"
+                         disabled:opacity-60 transition-all duration-200"
               style={{
                 borderColor: confirmPassword
                   ? confirmPassword === password ? '#2D5A45' : '#E05A5A'
@@ -238,19 +234,7 @@ export default function Register() {
               className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9E9690] hover:text-[#2D5A45] transition-colors p-1"
               aria-label={showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
             >
-              {showConfirmPassword ? (
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                    d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                </svg>
-              )}
+              {showConfirmPassword ? <EyeOffIcon /> : <EyeIcon />}
             </button>
           </div>
           {confirmPassword && confirmPassword !== password && (
@@ -288,22 +272,17 @@ export default function Register() {
           </div>
           <span className="text-sm text-[#6B6B6B] select-none leading-relaxed">
             Tôi đồng ý với{' '}
-            <Link to="#" className="text-[#2D5A45] font-medium hover:underline">
-              Điều khoản
-            </Link>
+            <Link to="#" className="text-[#2D5A45] font-medium hover:underline">Điều khoản</Link>
             {' '}& {' '}
-            <Link to="#" className="text-[#2D5A45] font-medium hover:underline">
-              Quyền riêng tư
-            </Link>
+            <Link to="#" className="text-[#2D5A45] font-medium hover:underline">Quyền riêng tư</Link>
           </span>
         </label>
 
-        {/* Submit Button */}
+        {/* Submit */}
         <button
-          id="register-submit"
           type="submit"
           disabled={isLoading}
-          className="w-full py-3.5 px-6 rounded-xl font-semibold text-white text-sm
+          className="w-full py-3.5 px-6 rounded-xl font-semibold text-white text-base
                      flex items-center justify-center gap-2 transition-all duration-200
                      disabled:opacity-60 disabled:cursor-not-allowed
                      hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0"
@@ -323,9 +302,7 @@ export default function Register() {
               Đang tạo tài khoản...
             </>
           ) : (
-            <>
-              <span>→</span> Tạo tài khoản
-            </>
+            <>→ Tạo tài khoản</>
           )}
         </button>
       </form>
@@ -333,10 +310,7 @@ export default function Register() {
       {/* Login link */}
       <p className="mt-6 text-center text-sm text-[#6B6B6B]">
         Đã có tài khoản?{' '}
-        <Link
-          to="/login"
-          className="text-[#2D5A45] font-semibold hover:underline transition-all"
-        >
+        <Link to="/login" className="text-[#2D5A45] font-semibold hover:underline transition-all">
           Đăng nhập
         </Link>
       </p>

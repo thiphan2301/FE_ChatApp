@@ -108,6 +108,53 @@ class WebSocketService {
     public sendAction(event: string, data?: any): void {
         this.sendMessage(event, data || {});
     }
+
+    // Promise-based request với timeout (dùng cho Login, Register)
+    public request<T extends ServerResponse = ServerResponse>(
+        sendEvent: string,
+        listenEvent: string,
+        data?: Record<string, unknown>,
+        timeoutMs = 10000,
+    ): Promise<T> {
+        return new Promise((resolve, reject) => {
+            let timer: ReturnType<typeof setTimeout>;
+
+            const handler = (msg: ServerResponse) => {
+                clearTimeout(timer);
+                this.off(listenEvent, handler);
+                resolve(msg as T);
+            };
+
+            timer = setTimeout(() => {
+                this.off(listenEvent, handler);
+                reject(new Error('Yêu cầu quá thời gian chờ. Vui lòng thử lại.'));
+            }, timeoutMs);
+
+            this.onOpen(() => {
+                this.on(listenEvent, handler);
+                this.sendMessage(sendEvent, data ?? {});
+            });
+
+            // Kích hoạt kết nối nếu chưa có
+            this.connect();
+        });
+    }
+
+    // Kiểm tra có session localStorage không
+    public hasSession(): boolean {
+        return !!(localStorage.getItem('username') && localStorage.getItem('re_login_code'));
+    }
+
+    // Xoá session và đóng kết nối
+    public logout(): void {
+        localStorage.removeItem('username');
+        localStorage.removeItem('re_login_code');
+        localStorage.removeItem('remember_me');
+        this.ws?.close();
+        this.ws = null;
+        this.listeners = [];
+        this.handlers.clear();
+    }
 }
 
 
