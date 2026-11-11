@@ -69,4 +69,6 @@ export const signOut = async (): Promise<void> => {
     [LOGGED_IN_USERNAME_KEY, RE_LOGIN_CODE_KEY, REMEMBER_ME_KEY].forEach((key) =>
         window.localStorage.removeItem(key),
     );
+    window.sessionStorage.removeItem(RE_LOGIN_CODE_KEY);
+    window.sessionStorage.removeItem(LOGGED_IN_USERNAME_KEY);
 };
