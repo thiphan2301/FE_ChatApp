@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from '../components/layout/AuthLayout';
 import { wsService } from '../services/websocketService';
 
-
 export default function Register() {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
@@ -18,20 +17,26 @@ export default function Register() {
 
   const validateUsername = (val: string) => /^[a-zA-Z0-9_]+$/.test(val);
 
+  const openPolicy = (type: 'terms' | 'privacy') => {
+    window.dispatchEvent(new CustomEvent('open-auth-modal', { detail: type }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccess('');
 
-    if (!username.trim()) {
+    const cleanUser = username.trim();
+
+    if (!cleanUser) {
       setError('Vui lòng nhập tên đăng nhập.');
       return;
     }
-    if (!validateUsername(username)) {
-      setError('Tên đăng nhập chỉ được dùng chữ cái, số và dấu gạch dưới (_).');
+    if (!validateUsername(cleanUser)) {
+      setError('Tên đăng nhập chỉ được dùng chữ cái không dấu, số và dấu gạch dưới (_).');
       return;
     }
-    if (username.length < 3) {
+    if (cleanUser.length < 3) {
       setError('Tên đăng nhập phải có ít nhất 3 ký tự.');
       return;
     }
@@ -48,7 +53,7 @@ export default function Register() {
       return;
     }
     if (!agreeTerms) {
-      setError('Bạn cần đồng ý với Điều khoản & Quyền riêng tư.');
+      setError('Bạn cần đồng ý với Điều khoản dịch vụ & Chính sách quyền riêng tư.');
       return;
     }
 
@@ -57,17 +62,17 @@ export default function Register() {
       const msg = await wsService.request<{ status: string; mes?: string }>(
         'REGISTER',
         'REGISTER',
-        { user: username, pass: password },
+        { user: cleanUser, pass: password },
       );
 
       if (msg.status === 'success') {
-        setSuccess('Tạo tài khoản thành công! Đang chuyển đến đăng nhập...');
-        setTimeout(() => navigate('/login'), 2000);
+        setSuccess('Tạo tài khoản thành công! Đang chuyển đến trang đăng nhập...');
+        setTimeout(() => navigate('/login'), 1800);
       } else {
-        setError(msg.mes ?? 'Đăng ký thất bại. Tên đăng nhập có thể đã tồn tại.');
+        setError(msg.mes ?? 'Đăng ký thất bại. Tên đăng nhập có thể đã được sử dụng.');
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Đăng ký thất bại. Vui lòng thử lại.');
+      setError(err instanceof Error ? err.message : 'Đăng ký thất bại. Vui lòng kiểm tra lại kết nối mạng.');
     } finally {
       setIsLoading(false);
     }
@@ -75,34 +80,40 @@ export default function Register() {
 
   const passwordStrength = (() => {
     if (password.length === 0) return null;
-    if (password.length < 6) return { level: 1, label: 'Yếu', color: '#E05A5A' };
+    if (password.length < 6) return { level: 1, label: 'Yếu (dưới 6 ký tự)', color: '#E05A5A' };
     if (password.length < 10) return { level: 2, label: 'Trung bình', color: '#E0A85A' };
     return { level: 3, label: 'Mạnh', color: '#2D5A45' };
   })();
 
-  // Shared eye-off icon
   const EyeOffIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-        d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.8}
+        d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+      />
     </svg>
   );
+
   const EyeIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.8}
+        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+      />
     </svg>
   );
 
   return (
     <AuthLayout>
-      {/* Page label */}
       <p className="text-[#2D5A45]/50 text-sm font-semibold tracking-widest uppercase mb-6 -mt-2">
         Bắt đầu một kết nối mới
       </p>
 
-      {/* Heading */}
       <h1
         style={{
           fontFamily: "'Playfair Display', serif",
@@ -119,7 +130,6 @@ export default function Register() {
         Chỉ vài điều nhỏ, rồi mình bắt đầu nhé.
       </p>
 
-      {/* Alerts */}
       {error && (
         <div className="mb-5 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm flex items-center gap-2">
           <span>⚠</span> {error}
@@ -131,9 +141,7 @@ export default function Register() {
         </div>
       )}
 
-      {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Username */}
         <div>
           <label htmlFor="register-username" className="block text-base font-medium text-[#1A1A1A] mb-2">
             Tên đăng nhập
@@ -155,7 +163,6 @@ export default function Register() {
           </p>
         </div>
 
-        {/* Password */}
         <div>
           <label htmlFor="register-password" className="block text-base font-medium text-[#1A1A1A] mb-2">
             Mật khẩu
@@ -183,7 +190,6 @@ export default function Register() {
             </button>
           </div>
 
-          {/* Password strength */}
           {passwordStrength && (
             <div className="mt-2 space-y-1">
               <div className="flex gap-1">
@@ -205,7 +211,6 @@ export default function Register() {
           <p className="mt-1.5 text-xs text-[#9E9690]">Ít nhất 6 ký tự.</p>
         </div>
 
-        {/* Confirm Password */}
         <div>
           <label htmlFor="register-confirm-password" className="block text-base font-medium text-[#1A1A1A] mb-2">
             Nhập lại mật khẩu
@@ -224,7 +229,9 @@ export default function Register() {
                          disabled:opacity-60 transition-all duration-200"
               style={{
                 borderColor: confirmPassword
-                  ? confirmPassword === password ? '#2D5A45' : '#E05A5A'
+                  ? confirmPassword === password
+                    ? '#2D5A45'
+                    : '#E05A5A'
                   : undefined,
               }}
             />
@@ -238,14 +245,17 @@ export default function Register() {
             </button>
           </div>
           {confirmPassword && confirmPassword !== password && (
-            <p className="mt-1.5 text-xs" style={{ color: '#E05A5A' }}>Mật khẩu nhập lại không khớp.</p>
+            <p className="mt-1.5 text-xs" style={{ color: '#E05A5A' }}>
+              Mật khẩu nhập lại không khớp.
+            </p>
           )}
           {confirmPassword && confirmPassword === password && (
-            <p className="mt-1.5 text-xs" style={{ color: '#2D5A45' }}>✓ Mật khẩu khớp.</p>
+            <p className="mt-1.5 text-xs" style={{ color: '#2D5A45' }}>
+              ✓ Mật khẩu khớp.
+            </p>
           )}
         </div>
 
-        {/* Agree Terms */}
         <label className="flex items-start gap-3 cursor-pointer group">
           <div className="relative mt-0.5 shrink-0">
             <input
@@ -256,11 +266,11 @@ export default function Register() {
               className="sr-only"
             />
             <div
-              className={`w-4 h-4 rounded flex items-center justify-center border transition-all duration-200
-                ${agreeTerms
+              className={`w-4 h-4 rounded flex items-center justify-center border transition-all duration-200 ${
+                agreeTerms
                   ? 'bg-[#2D5A45] border-[#2D5A45]'
                   : 'bg-white border-[#D9D4CC] group-hover:border-[#2D5A45]'
-                }`}
+              }`}
               onClick={() => setAgreeTerms(!agreeTerms)}
             >
               {agreeTerms && (
@@ -272,13 +282,30 @@ export default function Register() {
           </div>
           <span className="text-sm text-[#6B6B6B] select-none leading-relaxed">
             Tôi đồng ý với{' '}
-            <Link to="#" className="text-[#2D5A45] font-medium hover:underline">Điều khoản</Link>
-            {' '}& {' '}
-            <Link to="#" className="text-[#2D5A45] font-medium hover:underline">Quyền riêng tư</Link>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                openPolicy('terms');
+              }}
+              className="text-[#2D5A45] font-medium hover:underline p-0 bg-transparent border-none cursor-pointer"
+            >
+              Điều khoản
+            </button>
+            {' '}&{' '}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                openPolicy('privacy');
+              }}
+              className="text-[#2D5A45] font-medium hover:underline p-0 bg-transparent border-none cursor-pointer"
+            >
+              Quyền riêng tư
+            </button>
           </span>
         </label>
 
-        {/* Submit */}
         <button
           type="submit"
           disabled={isLoading}
@@ -307,7 +334,6 @@ export default function Register() {
         </button>
       </form>
 
-      {/* Login link */}
       <p className="mt-6 text-center text-sm text-[#6B6B6B]">
         Đã có tài khoản?{' '}
         <Link to="/login" className="text-[#2D5A45] font-semibold hover:underline transition-all">
