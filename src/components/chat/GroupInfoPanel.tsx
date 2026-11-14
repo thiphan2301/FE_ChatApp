@@ -6,10 +6,12 @@ import { formatFileSize, formatSharedDay } from '../../utils/helpers';
 import { FileAttachment } from './ChatWindow';
 
 const MEMBER_PREVIEW_COUNT = 3;
+const COPIED_FEEDBACK_MS = 2000;
 
 interface MemberListProps {
     members: ConversationMember[];
-    canAddMembers: boolean;
+    roomName: string;
+    canInvite: boolean;
 }
 
 const describeMember = (member: ConversationMember): string => {
@@ -17,16 +19,39 @@ const describeMember = (member: ConversationMember): string => {
     return member.online ? 'Đang hoạt động' : 'Không hoạt động';
 };
 
-const MemberList = ({ members, canAddMembers }: MemberListProps) => {
+const MemberList = ({ members, roomName, canInvite }: MemberListProps) => {
     const [expanded, setExpanded] = useState(false);
+    const [copied, setCopied] = useState(false);
     const visibleMembers = expanded ? members : members.slice(0, MEMBER_PREVIEW_COUNT);
+
+    const copyRoomName = async () => {
+        try {
+            await navigator.clipboard.writeText(roomName);
+        } catch {
+            return;
+        }
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
+    };
 
     return (
         <section aria-label="Thành viên" className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
                 <h3 className="text-[13px] font-semibold text-ink">Thành viên · {members.length}</h3>
-                {canAddMembers && (
-                    <IconButton icon="fa-solid fa-user-plus" label="Thêm thành viên" className="h-7 w-7 text-forest-soft" />
+                {canInvite && (
+                    <div className="flex items-center gap-2">
+                        {copied && (
+                            <span role="status" className="text-[11px] text-forest-soft">
+                                Đã sao chép tên phòng
+                            </span>
+                        )}
+                        <IconButton
+                            icon="fa-solid fa-user-plus"
+                            label="Sao chép tên phòng để mời thành viên"
+                            onClick={() => void copyRoomName()}
+                            className="h-7 w-7 text-forest-soft"
+                        />
+                    </div>
                 )}
             </div>
             <ul className="flex flex-col gap-3">
@@ -122,7 +147,7 @@ export const GroupInfoPanel = ({ conversation, onClose, onToggleMuted, onLeave }
             </div>
 
             <div className="border-b border-line px-5 py-4">
-                <MemberList members={conversation.members} canAddMembers={isGroup} />
+                <MemberList members={conversation.members} roomName={conversation.name} canInvite={isGroup} />
             </div>
 
             <div className="border-b border-line px-5 py-4">
@@ -136,7 +161,7 @@ export const GroupInfoPanel = ({ conversation, onClose, onToggleMuted, onLeave }
                     className="mx-5 my-4 flex items-center gap-2 self-start text-[13px] font-medium text-danger hover:underline"
                 >
                     <i className="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i>
-                    Rời nhóm
+                    Rời phòng
                 </button>
             )}
         </aside>

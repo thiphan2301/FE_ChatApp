@@ -12,6 +12,7 @@ export interface ConversationSummary {
     lastMessagePreview: string;
     lastMessageAt: string;
     unreadCount: number;
+    archived: boolean;
 }
 
 export interface ConversationMember {
@@ -75,10 +76,23 @@ export interface Conversation {
     currentUserId: string;
     members: ConversationMember[];
     messages: Message[];
-    typingUserId?: string;
+    hasMoreMessages: boolean;
     sharedPhotos: SharedPhoto[];
     sharedFiles: SharedFile[];
 }
+
+export type ChatEvent =
+    | {
+    type: 'message';
+    roomId: string;
+    message: UserMessage;
+    fromMe: boolean;
+    viewing: boolean;
+    unreadCount: number;
+    archived: boolean;
+}
+    | { type: 'sendError'; roomId: string; messageId: string; reason: string }
+    | { type: 'unread'; total: number };
 
 export interface UserProfile {
     id: string;
@@ -118,7 +132,6 @@ export interface AccountSettings {
     showActivityStatus: boolean;
     messagePermission: MessagePermission;
     blockedAccountCount: number;
-    passwordChangedAt: string;
     activeDevices: ActiveDevice[];
     theme: ThemeMode;
 }

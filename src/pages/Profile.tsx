@@ -16,7 +16,6 @@ import {
     readAvatarAsDataUrl,
     validateAvatarFile,
     validateDisplayName,
-    validateUsername,
 } from '../utils/helpers';
 import type { ProfileErrors } from '../utils/helpers';
 
@@ -27,9 +26,9 @@ const loadProfileData = async () => {
 
 const useProfileData = () => useAsyncData(loadProfileData, 'profile');
 
-type EditableField = 'displayName' | 'username' | 'bio' | 'statusId' | 'avatarUrl';
+type EditableField = 'displayName' | 'bio' | 'statusId' | 'avatarUrl';
 
-const EDITABLE_FIELDS: EditableField[] = ['displayName', 'username', 'bio', 'statusId', 'avatarUrl'];
+const EDITABLE_FIELDS: EditableField[] = ['displayName', 'bio', 'statusId', 'avatarUrl'];
 
 const useProfileForm = (initialProfile: UserProfile) => {
     const [savedProfile, setSavedProfile] = useState(initialProfile);
@@ -39,9 +38,8 @@ const useProfileForm = (initialProfile: UserProfile) => {
 
     const errors: ProfileErrors = {
         displayName: validateDisplayName(draft.displayName),
-        username: validateUsername(draft.username),
     };
-    const isValid = !errors.displayName && !errors.username;
+    const isValid = !errors.displayName;
     const isDirty = EDITABLE_FIELDS.some((field) => draft[field] !== savedProfile[field]);
 
     const setField = (field: EditableField, value: string) => {
@@ -142,7 +140,7 @@ interface ProfileFormProps {
     isValid: boolean;
     saving: boolean;
     saveFailed: boolean;
-    onChange: (field: 'displayName' | 'username' | 'bio' | 'statusId' | 'avatarUrl', value: string) => void;
+    onChange: (field: EditableField, value: string) => void;
     onReset: () => void;
     onSubmit: () => void;
 }
@@ -185,19 +183,17 @@ const ProfileForm = ({
 
             <FormField
                 id="username"
-                label="Tên người dùng"
-                hint="Mọi người có thể tìm thấy bạn bằng tên này."
-                error={errors.username}
+                label="Tên đăng nhập"
+                hint="Tên đăng nhập gắn với tài khoản trên máy chủ nên không thể thay đổi."
             >
                 <div className="relative">
-                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm text-ink">@</span>
+                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm text-mist">@</span>
                     <input
                         id="username"
                         value={draft.username}
-                        onChange={(event) => onChange('username', event.target.value.replace(/^@+/, ''))}
-                        aria-invalid={Boolean(errors.username)}
+                        readOnly
                         aria-describedby="username-message"
-                        className={`${fieldInputClass(Boolean(errors.username))} pl-7`}
+                        className={`${fieldInputClass(false)} cursor-not-allowed bg-paper pl-7 text-slate`}
                     />
                 </div>
             </FormField>
