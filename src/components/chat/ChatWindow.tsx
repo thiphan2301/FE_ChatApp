@@ -14,27 +14,6 @@ import {
 const SEEN_AVATAR_LIMIT = 2;
 const MESSAGE_INPUT_MAX_HEIGHT_PX = 120;
 
-interface TypingIndicatorProps {
-    name: string;
-}
-
-const DOT_DELAYS = ['0ms', '200ms', '400ms'];
-
-const TypingIndicator = ({ name }: TypingIndicatorProps) => (
-    <div className="flex items-center gap-2 text-xs text-mist" role="status">
-    <span className="flex gap-0.5" aria-hidden="true">
-      {DOT_DELAYS.map((delay) => (
-          <span
-              key={delay}
-              style={{ animationDelay: delay }}
-              className="h-1 w-1 animate-pulse rounded-full bg-forest-soft"
-          />
-      ))}
-    </span>
-        <span>{name} đang nhập...</span>
-    </div>
-);
-
 interface FileAttachmentProps {
     fileName: string;
     subtitle: string;
@@ -123,6 +102,8 @@ const MessageBubble = ({ message, sender, isOwn, seenBy }: MessageBubbleProps) =
 
 interface MessageListProps {
     conversation: Conversation;
+    loadingOlder: boolean;
+    onLoadOlder: () => void;
 }
 
 const DayDivider = ({ label }: { label: string }) => (
@@ -133,17 +114,49 @@ const DayDivider = ({ label }: { label: string }) => (
     </div>
 );
 
-const MessageList = ({ conversation }: MessageListProps) => {
+const MessageList = ({ conversation, loadingOlder, onLoadOlder }: MessageListProps) => {
     const containerRef = useRef<HTMLDivElement>(null);
+    const anchorRef = useRef<{ height: number; top: number } | null>(null);
     const { messages, members, currentUserId } = conversation;
+    const firstMessageId = messages[0]?.id;
+    const lastMessageId = messages[messages.length - 1]?.id;
 
     useEffect(() => {
         const container = containerRef.current;
+        anchorRef.current = null;
         if (container) container.scrollTop = container.scrollHeight;
-    }, [messages.length, conversation.id]);
+    }, [lastMessageId, conversation.id]);
+
+    useEffect(() => {
+        const container = containerRef.current;
+        const anchor = anchorRef.current;
+        if (container && anchor) {
+            container.scrollTop = container.scrollHeight - anchor.height + anchor.top;
+            anchorRef.current = null;
+        }
+    }, [firstMessageId]);
+
+    const handleLoadOlder = () => {
+        const container = containerRef.current;
+        if (container) anchorRef.current = { height: container.scrollHeight, top: container.scrollTop };
+        onLoadOlder();
+    };
 
     return (
         <div ref={containerRef} className="flex flex-1 flex-col gap-5 overflow-y-auto px-8 py-5">
+            {conversation.hasMoreMessages && (
+                <button
+                    type="button"
+                    onClick={handleLoadOlder}
+                    disabled={loadingOlder}
+                    className="self-center rounded-full border border-line px-4 py-1.5 text-xs font-medium text-forest-soft transition hover:bg-paper disabled:opacity-60"
+                >
+                    {loadingOlder ? 'Đang tải...' : 'Xem tin nhắn cũ hơn'}
+                </button>
+            )}
+            {messages.length === 0 && (
+                <p className="m-auto text-center text-sm text-mist">Chưa có tin nhắn nào. Hãy gửi lời chào đầu tiên!</p>
+            )}
             {messages.map((message, index) => {
                 const startsNewDay = index === 0 || !isSameDay(messages[index - 1].sentAt, message.sentAt);
                 return (
@@ -209,7 +222,7 @@ const ChatHeader = ({ conversation, infoPanelOpen, onToggleInfoPanel }: ChatHead
 );
 
 interface MessageInputProps {
-    onSend: (text: string) => Promise<void>;
+    onSend: (text: string) => Promise<boolean>;
 }
 
 const MessageInput = ({ onSend }: MessageInputProps) => {
@@ -231,12 +244,10 @@ const MessageInput = ({ onSend }: MessageInputProps) => {
         if (!trimmed || sending) return;
         setSending(true);
         setText('');
-        try {
-            await onSend(trimmed);
-        } finally {
-            setSending(false);
-            textareaRef.current?.focus();
-        }
+        const sent = await onSend(trimmed);
+        if (!sent) setText(trimmed);
+        setSending(false);
+        textareaRef.current?.focus();
     };
 
     const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -284,8 +295,12 @@ interface ChatWindowProps {
     status: 'loading' | 'error' | 'ready';
     conversation: Conversation | null;
     infoPanelOpen: boolean;
+    loadingOlder: boolean;
+    notice: string | null;
     onToggleInfoPanel: () => void;
-    onSend: (text: string) => Promise<void>;
+    onSend: (text: string) => Promise<boolean>;
+    onLoadOlder: () => void;
+    onDismissNotice: () => void;
     onRetry: () => void;
 }
 
@@ -293,8 +308,12 @@ export const ChatWindow = ({
                                status,
                                conversation,
                                infoPanelOpen,
+                               loadingOlder,
+                               notice,
                                onToggleInfoPanel,
                                onSend,
+                               onLoadOlder,
+                               onDismissNotice,
                                onRetry,
                            }: ChatWindowProps) => {
     if (status !== 'ready') {
@@ -313,8 +332,6 @@ export const ChatWindow = ({
         );
     }
 
-    const typingMember = conversation.members.find((member) => member.id === conversation.typingUserId);
-
     return (
         <section className="flex min-w-0 flex-1 flex-col bg-white">
             <ChatHeader
@@ -322,10 +339,18 @@ export const ChatWindow = ({
                 infoPanelOpen={infoPanelOpen}
                 onToggleInfoPanel={onToggleInfoPanel}
             />
-            <MessageList conversation={conversation} />
-            <div className="h-8 shrink-0 px-8">
-                {typingMember && <TypingIndicator name={typingMember.name.split(' ')[0]} />}
-            </div>
+            <MessageList conversation={conversation} loadingOlder={loadingOlder} onLoadOlder={onLoadOlder} />
+            {notice && (
+                <div
+                    role="alert"
+                    className="mx-6 mb-2 flex items-center justify-between gap-3 rounded-xl bg-danger-soft px-4 py-2.5 text-xs text-danger"
+                >
+                    <span>{notice}</span>
+                    <button type="button" onClick={onDismissNotice} aria-label="Đóng thông báo" className="shrink-0">
+                        <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+                    </button>
+                </div>
+            )}
             <MessageInput key={conversation.id} onSend={onSend} />
         </section>
     );
