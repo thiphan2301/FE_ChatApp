@@ -1,0 +1,280 @@
+.contacts-layout {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    background-color: #ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+.contacts-main-content {
+    flex: 1;
+    height: 100vh;
+    padding: 32px 40px;
+    background-color: #ffffff;
+}
+
+/* Tiêu đề trang */
+.contacts-title {
+    font-size: 26px;
+    font-weight: 700;
+    color: #111;
+    margin-bottom: 24px;
+    margin-top: 0;
+}
+
+/* Khung tìm kiếm */
+.contacts-search-box {
+    margin-bottom: 24px;
+}
+
+.contacts-search-label {
+    font-size: 14px;
+    color: #4b5563;
+    margin-bottom: 8px;
+}
+
+.contacts-search-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.contacts-search-input {
+    width: 100%;
+    padding: 12px 16px;
+    padding-right: 40px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+    background-color: #fff;
+}
+
+.contacts-search-input:focus {
+    border-color: #9ca3af;
+}
+
+.contacts-search-icon {
+    position: absolute;
+    right: 16px;
+    color: #9ca3af;
+    font-size: 14px;
+    pointer-events: none;
+}
+
+/* Tabs */
+.contacts-tabs {
+    display: flex;
+    gap: 24px;
+    border-bottom: 1px solid #e5e7eb;
+    margin-bottom: 24px;
+}
+
+.contacts-tab-btn {
+    background: none;
+    border: none;
+    font-size: 14px;
+    font-weight: 500;
+    color: #6b7280;
+    padding: 0 0 12px 0;
+    cursor: pointer;
+    position: relative;
+}
+
+.contacts-tab-btn.active {
+    color: #111827;
+    font-weight: 600;
+}
+
+.contacts-tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: #14261C;
+}
+
+.contacts-tab-btn span {
+    font-weight: 400;
+    color: #9ca3af;
+    margin-left: 4px;
+}
+
+/* Các section */
+.contacts-section {
+    margin-bottom: 32px;
+}
+
+.contacts-section-header {
+    font-size: 11px;
+    font-weight: 700;
+    color: #9ca3af;
+    letter-spacing: 0.05em;
+    margin-bottom: 16px;
+    text-transform: uppercase;
+}
+
+.contacts-section-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.contacts-sort {
+    font-size: 12px;
+    color: #6b7280;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.contacts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Item dòng danh bạ / lời mời */
+.contacts-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.contacts-user-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.contacts-avatar-wrapper {
+    position: relative;
+}
+
+.contacts-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.contacts-avatar.bg-amber {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.contacts-avatar.bg-emerald {
+    background-color: #d1fae5;
+    color: #065f46;
+}
+
+.contacts-avatar-img {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.contacts-online-dot {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 12px;
+    height: 12px;
+    background-color: #10b981;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+}
+
+.contacts-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #111827;
+    margin-bottom: 2px;
+}
+
+.contacts-subtext {
+    font-size: 12px;
+    color: #9ca3af;
+}
+
+.contacts-status {
+    font-size: 12px;
+    color: #9ca3af;
+}
+
+.contacts-status.online {
+    color: #059669;
+    font-weight: 500;
+}
+
+/* Nút bấm trong Lời mời kết bạn */
+.contacts-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-secondary {
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    color: #374151;
+    padding: 8px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-secondary:hover {
+    background-color: #f9fafb;
+}
+
+.btn-primary {
+    background-color: #14261C;
+    border: 1px solid #14261C;
+    color: #ffffff;
+    padding: 8px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.btn-primary:hover {
+    opacity: 0.9;
+}
+
+/* Nút hành động danh sách bạn bè */
+.contacts-item-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.icon-btn {
+    background: none;
+    border: none;
+    color: #6b7280;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    transition: color 0.2s, background-color 0.2s;
+}
+
+.icon-btn:hover {
+    color: #111827;
+    background-color: #e5e7eb;
+}
