@@ -141,6 +141,13 @@
     gap: 16px;
 }
 
+.contacts-empty {
+    margin: 0;
+    padding: 20px 0;
+    color: #6b7280;
+    font-size: 13px;
+}
+
 /* Item dòng danh bạ / lời mời */
 .contacts-item {
     display: flex;
