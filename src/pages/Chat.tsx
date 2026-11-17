@@ -17,9 +17,11 @@ export default function Chat() {
     const chatTargetRef = useRef(initialChatTarget);
     const [chatList, setChatList] = useState<any[]>([]);
     const [selectedChat, setSelectedChat] = useState<any | null>(null);
+    const selectedChatRef = useRef<any | null>(null);
     const [messages, setMessages] = useState<any[]>([]);
     const [inputText, setInputText] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
+    const currentPageRef = useRef(currentPage);
     const [hasMore, setHasMore] = useState(true);
     const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
     const [, setIsLoading] = useState(true);
@@ -62,6 +64,7 @@ export default function Chat() {
         if (selectedChat && hasMore) {
             const nextPage = currentPage + 1;
             setCurrentPage(nextPage);
+            currentPageRef.current = nextPage;
             fetchMessagesForChat(selectedChat, nextPage);
         }
     };
@@ -84,7 +87,7 @@ export default function Chat() {
                     setIsLoading(false);
 
                     // Ưu tiên người dùng được chuyển đến từ trang tìm kiếm.
-                    if (!selectedChat) {
+                    if (!selectedChatRef.current) {
                         const targetUsername = chatTargetRef.current;
                         const targetChat = targetUsername
                             ? list.find(
@@ -97,6 +100,7 @@ export default function Chat() {
 
                         if (targetChat) {
                             setSelectedChat(targetChat);
+                            selectedChatRef.current = targetChat;
                             fetchMessagesForChat(targetChat);
                             chatTargetRef.current = null;
                         }
@@ -110,7 +114,7 @@ export default function Chat() {
 
                     const newMessages = Array.isArray(msgData) ? msgData : [];
 
-                    if (currentPage === 1) {
+                    if (currentPageRef.current === 1) {
                         setMessages(newMessages);
                     } else {
                         // Nối tin nhắn cũ vào đầu danh sách
@@ -135,7 +139,7 @@ export default function Chat() {
                     if (response.data) {
                         setOnlineUsers(prev => ({
                             ...prev,
-                            [selectedChat?.name]: response.data.status
+                            [selectedChatRef.current?.name]: response.data.status
                         }));
                     }
                 }
@@ -150,8 +154,10 @@ export default function Chat() {
     // Khi bấm chọn một cuộc trò chuyện trong danh sách
     const handleSelectChat = (chat: any) => {
         setSelectedChat(chat);
+        selectedChatRef.current = chat;
         // Reset phân trang
         setCurrentPage(1);
+        currentPageRef.current = 1;
         setHasMore(true);
         //xóa tạm tin nhắn cũ khi đổi chat
         setMessages([]);
