@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { IconButton, StatusPanel } from '../common/Controls';
 import { UserAvatar } from '../common/UserAvatar';
-import type { Conversation, ConversationMember } from '../../types';
+import type { Conversation, ConversationMember, ReplyReference, SendMessageOptions, UserMessage } from '../../types';
 import { findMatchRanges } from '../../utils/helpers';
+import { createReplyReference } from '../../utils/messageCodec';
 import { EmojiPicker } from './EmojiPicker';
 import { MessageList } from './MessageList';
+import { ReplyBanner } from './ReplyParts';
 
 const MESSAGE_INPUT_MAX_HEIGHT_PX = 120;
 
@@ -59,13 +61,19 @@ const ChatHeader = ({ conversation, infoPanelOpen, searchOpen, onToggleSearch, o
 
 interface MessageInputProps {
     offline: boolean;
-    onSend: (text: string) => Promise<boolean>;
+    replyTo: ReplyReference | null;
+    onCancelReply: () => void;
+    onSend: (text: string, options?: SendMessageOptions) => Promise<boolean>;
 }
 
-const MessageInput = ({ offline, onSend }: MessageInputProps) => {
+const MessageInput = ({ offline, replyTo, onCancelReply, onSend }: MessageInputProps) => {
     const [text, setText] = useState('');
     const [sending, setSending] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    useEffect(() => {
+        if (replyTo) textareaRef.current?.focus();
+    }, [replyTo]);
 
     useEffect(() => {
         const textarea = textareaRef.current;
@@ -91,15 +99,22 @@ const MessageInput = ({ offline, onSend }: MessageInputProps) => {
     const submit = async () => {
         const trimmed = text.trim();
         if (!trimmed || sending) return;
+        const activeReply = replyTo;
         setSending(true);
         setText('');
-        const sent = await onSend(trimmed);
+        if (activeReply) onCancelReply();
+        const sent = await onSend(trimmed, activeReply ? { replyTo: activeReply } : undefined);
         if (!sent) setText(trimmed);
         setSending(false);
         textareaRef.current?.focus();
     };
 
     const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+        if (event.key === 'Escape' && replyTo) {
+            event.preventDefault();
+            onCancelReply();
+            return;
+        }
         if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
             event.preventDefault();
             void submit();
@@ -108,6 +123,7 @@ const MessageInput = ({ offline, onSend }: MessageInputProps) => {
 
     return (
         <div className="shrink-0 px-6 pb-4">
+            {replyTo && <ReplyBanner replyTo={replyTo} onCancel={onCancelReply} />}
             <div className="flex items-end gap-2 rounded-2xl border border-line bg-paper px-3 py-2.5 focus-within:border-forest-soft">
                 <IconButton icon="fa-solid fa-plus" label="Thêm nội dung" />
                 <textarea
@@ -243,6 +259,7 @@ const ConversationPane = ({
     const [searchOpen, setSearchOpen] = useState(false);
     const [query, setQuery] = useState('');
     const [activeIndex, setActiveIndex] = useState(0);
+    const [replyTo, setReplyTo] = useState<ReplyReference | null>(null);
 
     const matchIds = useMemo(
         () =>
@@ -267,6 +284,10 @@ const ConversationPane = ({
     const moveMatch = (step: number) => {
         if (matchIds.length === 0) return;
         setActiveIndex((position + step + matchIds.length) % matchIds.length);
+    };
+
+    const handleReply = (message: UserMessage) => {
+        setReplyTo(createReplyReference(message.senderId, message.text, message.id));
     };
 
     return (
@@ -297,6 +318,7 @@ const ConversationPane = ({
                 activeMatchId={activeMatchId}
                 onLoadOlder={onLoadOlder}
                 onSelectMember={onSelectMember}
+                onReply={handleReply}
             />
             {notice && (
                 <div
@@ -309,7 +331,12 @@ const ConversationPane = ({
                     </button>
                 </div>
             )}
-            <MessageInput offline={offline} onSend={onSend} />
+            <MessageInput
+                offline={offline}
+                replyTo={replyTo}
+                onCancelReply={() => setReplyTo(null)}
+                onSend={onSend}
+            />
         </section>
     );
 };
@@ -322,7 +349,7 @@ interface ChatWindowProps {
     notice: string | null;
     offline: boolean;
     onToggleInfoPanel: () => void;
-    onSend: (text: string) => Promise<boolean>;
+    onSend: (text: string, options?: SendMessageOptions) => Promise<boolean>;
     onLoadOlder: () => void;
     onDismissNotice: () => void;
     onSelectMember: (member: ConversationMember) => void;

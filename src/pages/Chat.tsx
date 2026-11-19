@@ -2,8 +2,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { UserAvatar } from '../components/common/UserAvatar';
+import { CopyMessageButton } from '../components/chat/MessageList';
+import { ReplyBanner, ReplyQuote } from '../components/chat/ReplyParts';
+import type { ReplyReference } from '../types';
 import { wsService, type ServerResponse } from '../services/websocketService';
 import { getHiddenChats, hideChat, showChat } from '../utils/hiddenChats';
+import { createReplyReference, decodeMessagePayload, encodeMessagePayload } from '../utils/messageCodec';
 
 export default function Chat() {
     const location = useLocation();
@@ -26,9 +30,20 @@ export default function Chat() {
     const [hasMore, setHasMore] = useState(true);
     const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
     const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
+    const [replyTo, setReplyTo] = useState<ReplyReference | null>(null);
+    const [jumpHighlightId, setJumpHighlightId] = useState<string | null>(null);
+    const [sendError, setSendError] = useState<string | null>(null);
     const [, setIsLoading] = useState(true);
 
     const chatContainerRef = useRef<HTMLDivElement | null>(null);
+    const inputRef = useRef<HTMLInputElement | null>(null);
+    const jumpTimerRef = useRef<number | null>(null);
+    const localCounterRef = useRef(0);
+    const pendingSendsRef = useRef<{ to: string; mes: string; localId: string; expiresAt: number }[]>([]);
+    const lastMessageKeyRef = useRef<string | null>(null);
+
+    const getChatMessageId = (msg: any, index: number): string =>
+        msg.id !== undefined && msg.id !== null ? String(msg.id) : (msg._localId || `msg-${index}`);
 
     // hàm nhảy xuống dưới cùng cuôc trò truyện
     const scrollToBottomInstant = () => {
@@ -39,13 +54,21 @@ export default function Chat() {
 
     // theo dõi khi đổi đoạn chat hoặc khi có tín nhắn mới
     useEffect(() => {
-        if (messages.length > 0) {
-            // Dùng requestAnimationFrame để chắc chắn DOM đã render xong rồi hảy xuống dưới cùng luôn
+        const lastMsg = messages[messages.length - 1];
+        const nextKey = lastMsg ? `${selectedChat?.name ?? ''}:${getChatMessageId(lastMsg, messages.length - 1)}` : null;
+        if (nextKey && nextKey !== lastMessageKeyRef.current) {
+            lastMessageKeyRef.current = nextKey;
             requestAnimationFrame(() => {
                 scrollToBottomInstant();
             });
+        } else if (!nextKey) {
+            lastMessageKeyRef.current = null;
         }
     }, [messages, selectedChat]);
+
+    useEffect(() => () => {
+        if (jumpTimerRef.current !== null) window.clearTimeout(jumpTimerRef.current);
+    }, []);
 
     // hàm lấy lịch sử tin nhắn
     const fetchMessagesForChat = (chat: any, page: number = 1) => {
@@ -155,8 +178,30 @@ export default function Chat() {
                     }
                 } else if (response.event === 'SEND_CHAT') {
                     if (response.data) {
-                        setMessages((prev) => [...prev, response.data]);
-                        const senderName = response.data.name || response.data.from;
+                        const raw = response.data;
+                        const senderName = raw.name || raw.from || '';
+                        const currentUser = localStorage.getItem('username') || '';
+                        const now = Date.now();
+                        pendingSendsRef.current = pendingSendsRef.current.filter((item) => item.expiresAt > now);
+                        if (senderName === currentUser) {
+                            const matchedIndex = pendingSendsRef.current.findIndex(
+                                (item) => item.to === (raw.to || '') && item.mes === raw.mes,
+                            );
+                            if (matchedIndex !== -1) {
+                                pendingSendsRef.current.splice(matchedIndex, 1);
+                                return;
+                            }
+                        }
+                        const active = selectedChatRef.current;
+                        const belongsToActive =
+                            active &&
+                            ((raw.type === 1 && active.type === 1 && raw.to === active.name) ||
+                                (raw.type !== 1 &&
+                                    active.type === 0 &&
+                                    (senderName === active.name || raw.to === active.name)));
+                        if (belongsToActive) {
+                            setMessages((prev) => [...prev, raw]);
+                        }
                         if (senderName) {
                             setOnlineUsers(prev => ({ ...prev, [senderName]: true }));
                         }
@@ -169,6 +214,12 @@ export default function Chat() {
                         }));
                     }
                 }
+            } else if (response.event === 'SEND_CHAT') {
+                const failed = pendingSendsRef.current.pop();
+                if (failed) {
+                    setMessages((prev) => prev.filter((item) => item._localId !== failed.localId));
+                }
+                setSendError(response.mes || 'Không gửi được tin nhắn. Vui lòng thử lại.');
             }
         });
 
@@ -180,6 +231,8 @@ export default function Chat() {
     // Khi bấm chọn một cuộc trò chuyện trong danh sách
     const handleSelectChat = (chat: any) => {
         setOpenMenuFor(null);
+        setReplyTo(null);
+        setSendError(null);
         setSelectedChat(chat);
         selectedChatRef.current = chat;
         // Reset phân trang
@@ -216,28 +269,53 @@ export default function Chat() {
     };
 
 
+    const jumpToMessage = (messageId: string) => {
+        const element = chatContainerRef.current?.querySelector(`[data-message-id="${CSS.escape(messageId)}"]`);
+        if (!element) return;
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setJumpHighlightId(messageId);
+        if (jumpTimerRef.current !== null) window.clearTimeout(jumpTimerRef.current);
+        jumpTimerRef.current = window.setTimeout(() => setJumpHighlightId(null), 1500);
+    };
+
+    const appendOptimisticMessage = (targetName: string, wireText: string) => {
+        localCounterRef.current += 1;
+        const localId = `local-${Date.now()}-${localCounterRef.current}`;
+        pendingSendsRef.current.push({
+            to: targetName,
+            mes: wireText,
+            localId,
+            expiresAt: Date.now() + 10000,
+        });
+        const myUsername = localStorage.getItem('username') || 'Unknown';
+        setMessages((prev) => [
+            ...prev,
+            {
+                _localId: localId,
+                name: myUsername,
+                mes: wireText,
+                createAt: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
+            },
+        ]);
+    };
+
     // Gửi tin nhắn thật lên server
     const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!inputText.trim() || !selectedChat) return;
+        const trimmed = inputText.trim();
+        if (!trimmed || !selectedChat) return;
 
-        const messagePayload = {
+        const wireText = encodeMessagePayload(trimmed, replyTo ? { replyTo } : undefined);
+        wsService.sendMessage('SEND_CHAT', {
             type: selectedChat.type === 1 ? 'room' : 'people',
             to: selectedChat.name,
-            mes: inputText,
-        };
-
-        wsService.sendMessage('SEND_CHAT', messagePayload);
-
-        const myUsername = localStorage.getItem('username') || 'Unknown';
-        const localMsg = {
-            name: myUsername,
-            mes: inputText,
-            createAt: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
-        };
-        setMessages((prev) => [...prev, localMsg]);
+            mes: wireText,
+        });
+        appendOptimisticMessage(selectedChat.name, wireText);
 
         setInputText('');
+        setReplyTo(null);
+        setSendError(null);
     };
 
     return (
@@ -351,19 +429,43 @@ export default function Chat() {
                                 </div>
                             )}
                             {Array.isArray(messages) && messages.map((msg, index) => {
-
+                                const msgId = getChatMessageId(msg, index);
                                 const senderName = msg.name || msg.from || '';
                                 const currentLoggedInUser = localStorage.getItem('username') || 'Unknown';
                                 const isMe = senderName === currentLoggedInUser;
+                                const decoded = decodeMessagePayload(String(msg.mes || msg.text || ''));
+                                const isHighlighted = msgId === jumpHighlightId;
 
                                 return (
-                                    <div key={index} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                        <div className={`p-3 rounded-2xl max-w-md text-sm shadow-sm border ${isMe
-                                            ? 'bg-[#EBF2EE] border-emerald-100 text-right'
-                                            : 'bg-white border-gray-100 text-left'
-                                            }`}>
-                                            <span className="text-[10px] font-bold text-gray-600 block mb-0.5">{senderName}</span>
-                                            <p className="break-words">{msg.mes || msg.text}</p>
+                                    <div key={msgId} data-message-id={msgId} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                        <div className={`group/bubble flex max-w-md items-center gap-1.5 ${isMe ? 'flex-row-reverse' : ''}`}>
+                                            <div className={`min-w-0 p-3 rounded-2xl text-sm shadow-sm border transition ${isMe
+                                                ? 'bg-[#EBF2EE] border-emerald-100 text-left'
+                                                : 'bg-white border-gray-100 text-left'
+                                                } ${isHighlighted ? 'ring-2 ring-forest-soft' : ''}`}>
+                                                <span className="text-[10px] font-bold text-gray-600 block mb-0.5">{senderName}</span>
+                                                {decoded.replyTo && (
+                                                    <div className="mb-1.5">
+                                                        <ReplyQuote replyTo={decoded.replyTo} onJump={jumpToMessage} />
+                                                    </div>
+                                                )}
+                                                <p className="whitespace-pre-line break-words">{decoded.text}</p>
+                                            </div>
+                                            <div className={`flex shrink-0 items-center gap-0.5 ${isMe ? 'flex-row-reverse' : ''}`}>
+                                                <button
+                                                    type="button"
+                                                    aria-label="Trả lời tin nhắn"
+                                                    title="Trả lời tin nhắn"
+                                                    onClick={() => {
+                                                        setReplyTo(createReplyReference(senderName || 'Người dùng', decoded.text, msgId));
+                                                        inputRef.current?.focus();
+                                                    }}
+                                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-forest-soft focus:opacity-100 group-hover/bubble:opacity-100"
+                                                >
+                                                    <i className="fa-solid fa-reply" aria-hidden="true"></i>
+                                                </button>
+                                                {decoded.text && <CopyMessageButton text={decoded.text} />}
+                                            </div>
                                         </div>
                                         <span className="text-[10px] text-gray-400 mt-1">{msg.createAt || ''}</span>
                                     </div>
@@ -371,15 +473,32 @@ export default function Chat() {
                             })}
                         </div>
 
+                        {sendError && (
+                            <div role="alert" className="mx-4 mt-2 flex items-center justify-between gap-2 rounded-xl bg-danger-soft px-3 py-2 text-xs text-danger">
+                                <span>{sendError}</span>
+                                <button type="button" onClick={() => setSendError(null)} aria-label="Đóng thông báo">
+                                    <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        )}
+
                         <form onSubmit={handleSendMessage} className="p-4 bg-white border-t border-gray-200">
+                            {replyTo && <ReplyBanner replyTo={replyTo} onCancel={() => setReplyTo(null)} />}
                             <div className="flex items-center bg-[#F4F4F0] px-4 py-2.5 rounded-2xl gap-3">
                                 <button type="button" className="text-gray-400 hover:text-gray-600 text-base cursor-pointer">
                                     <i className="fa-solid fa-plus"></i>
                                 </button>
                                 <input
+                                    ref={inputRef}
                                     type="text"
                                     value={inputText}
                                     onChange={(e) => setInputText(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Escape' && replyTo) {
+                                            e.preventDefault();
+                                            setReplyTo(null);
+                                        }
+                                    }}
                                     placeholder="Nhắn gì đó nhé..."
                                     className="flex-1 bg-transparent border-none outline-none text-sm text-gray-700 placeholder-gray-400"
                                 />
