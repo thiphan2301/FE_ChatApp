@@ -1,7 +1,8 @@
 import { wsService } from './websocketService';
 import type { ServerResponse } from './websocketService';
-import type { ChatEvent, Conversation, ConversationMember, ConversationSummary, UserMessage } from '../types';
+import type { ChatEvent, Conversation, ConversationMember, ConversationSummary, SendMessageOptions, UserMessage } from '../types';
 import { parseDateTime } from '../utils/helpers';
+import { decodeMessagePayload, encodeMessagePayload } from '../utils/messageCodec';
 
 const ROOM_TYPE = 1;
 const MESSAGE_PAGE_SIZE = 50;
@@ -155,15 +156,19 @@ const sumUnread = (prefs: RoomPrefs): number =>
 
 let localMessageCounter = 0;
 
-const toUserMessage = (raw: RawRoomMessage): UserMessage => ({
-    kind: 'user',
-    id: raw.id === undefined ? `local-${Date.now()}-${(localMessageCounter += 1)}` : String(raw.id),
-    senderId: raw.name,
-    text: raw.mes,
-    sentAt: raw.createAt ?? new Date().toISOString(),
-    reactions: [],
-    seenByIds: [],
-});
+const toUserMessage = (raw: RawRoomMessage): UserMessage => {
+    const decoded = decodeMessagePayload(raw.mes);
+    return {
+        kind: 'user',
+        id: raw.id === undefined ? `local-${Date.now()}-${(localMessageCounter += 1)}` : String(raw.id),
+        senderId: raw.name,
+        text: decoded.text,
+        sentAt: raw.createAt ?? new Date().toISOString(),
+        reactions: [],
+        replyTo: decoded.replyTo,
+        seenByIds: [],
+    };
+};
 
 const byTimeAscending = (first: UserMessage, second: UserMessage): number =>
     parseDateTime(first.sentAt).getTime() - parseDateTime(second.sentAt).getTime();
@@ -327,12 +332,22 @@ const handleServerEvent = (response: ServerResponse): void => {
 
 export const startRealtime = (): (() => void) => wsService.addListener(handleServerEvent);
 
-export const sendMessage = async (roomId: string, text: string): Promise<UserMessage> => {
+export const sendMessage = async (
+    roomId: string,
+    text: string,
+    options?: SendMessageOptions,
+): Promise<UserMessage> => {
     if (!wsService.isConnected()) throw new Error(DISCONNECTED_ERROR);
-    const message = toUserMessage({ name: getUsername(), mes: text });
+    const wireText = encodeMessagePayload(text, options);
+    const message = toUserMessage({ name: getUsername(), mes: wireText });
     prunePendingSends();
-    pendingSends.push({ roomId, messageId: message.id, text, expiresAt: Date.now() + SEND_CONFIRM_WINDOW_MS });
-    wsService.sendMessage('SEND_CHAT', { type: 'room', to: roomId, mes: text });
+    pendingSends.push({
+        roomId,
+        messageId: message.id,
+        text: wireText,
+        expiresAt: Date.now() + SEND_CONFIRM_WINDOW_MS,
+    });
+    wsService.sendMessage('SEND_CHAT', { type: 'room', to: roomId, mes: wireText });
     return message;
 };
 

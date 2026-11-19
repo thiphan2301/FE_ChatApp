@@ -46,6 +46,16 @@ export interface Reaction {
     count: number;
 }
 
+export interface ReplyReference {
+    messageId?: string;
+    senderId: string;
+    text: string;
+}
+
+export interface SendMessageOptions {
+    replyTo?: ReplyReference;
+}
+
 export interface UserMessage {
     kind: 'user';
     id: string;
@@ -54,6 +64,7 @@ export interface UserMessage {
     sentAt: string;
     reactions: Reaction[];
     attachment?: Attachment;
+    replyTo?: ReplyReference;
     seenByIds: string[];
 }
 

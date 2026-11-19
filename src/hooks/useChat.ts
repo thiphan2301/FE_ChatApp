@@ -18,7 +18,7 @@ import {
     startRealtime,
     subscribeChatEvents,
 } from '../services/chatService';
-import type { Conversation, ConversationSummary, Message, UserMessage } from '../types';
+import type { Conversation, ConversationSummary, Message, SendMessageOptions, UserMessage } from '../types';
 import { startMessageNotifications } from '../services/notificationService';
 import { wsService } from '../services/websocketService';
 import { parseDateTime } from '../utils/helpers';
@@ -235,10 +235,10 @@ export const useChat = () => {
         }
     };
 
-    const send = async (text: string): Promise<boolean> => {
+    const send = async (text: string, options?: SendMessageOptions): Promise<boolean> => {
         if (!activeId) return false;
         try {
-            const message = await sendMessage(activeId, text);
+            const message = await sendMessage(activeId, text, options);
             setNotice(null);
             updateConversation((current) =>
                 current ? { ...current, messages: [...current.messages, message] } : current,
