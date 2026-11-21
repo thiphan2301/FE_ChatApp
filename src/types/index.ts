@@ -54,6 +54,13 @@ export interface ReplyReference {
 
 export interface SendMessageOptions {
     replyTo?: ReplyReference;
+    forwardedFrom?: string;
+}
+
+export interface ForwardTarget {
+    id: string;
+    name: string;
+    type: ConversationType;
 }
 
 export interface UserMessage {
@@ -65,6 +72,7 @@ export interface UserMessage {
     reactions: Reaction[];
     attachment?: Attachment;
     replyTo?: ReplyReference;
+    forwardedFrom?: string;
     seenByIds: string[];
 }
 

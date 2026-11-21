@@ -11,11 +11,13 @@ interface WireReply {
 
 interface WirePayload {
     r?: WireReply;
+    f?: string;
 }
 
 export interface DecodedMessagePayload {
     text: string;
     replyTo?: ReplyReference;
+    forwardedFrom?: string;
 }
 
 const truncateReplyText = (text: string): string => {
@@ -37,15 +39,20 @@ export const createReplyReference = (
 
 export const encodeMessagePayload = (text: string, options?: SendMessageOptions): string => {
     const reply = options?.replyTo;
-    if (!reply) return text;
+    const forwardedFrom = options?.forwardedFrom?.trim();
+    if (!reply && !forwardedFrom) return text;
 
-    const wire: WirePayload = {
-        r: {
+    const wire: WirePayload = {};
+    if (reply) {
+        wire.r = {
             ...(reply.messageId ? { id: reply.messageId } : {}),
             a: reply.senderId,
             t: truncateReplyText(reply.text),
-        },
-    };
+        };
+    }
+    if (forwardedFrom) {
+        wire.f = forwardedFrom;
+    }
 
     const header = `${WIRE_PREFIX}${JSON.stringify(wire)}`;
     return text ? `${header}\n${text}` : header;
@@ -72,12 +79,15 @@ export const decodeMessagePayload = (raw: string): DecodedMessagePayload => {
                       text: typeof wire.r.t === 'string' ? wire.r.t : '',
                   }
                 : undefined;
+        const forwardedFrom =
+            typeof wire.f === 'string' && wire.f.trim() ? wire.f.trim() : undefined;
 
-        if (!replyTo) return { text: raw };
+        if (!replyTo && !forwardedFrom) return { text: raw };
 
         return {
             text: body,
             replyTo,
+            forwardedFrom,
         };
     } catch {
         return { text: raw };

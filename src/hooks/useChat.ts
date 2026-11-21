@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
     archiveConversation,
     createRoom,
+    forwardMessage,
     getConversation,
     getConversationSummaries,
     getMembersOnline,
@@ -18,7 +19,7 @@ import {
     startRealtime,
     subscribeChatEvents,
 } from '../services/chatService';
-import type { Conversation, ConversationSummary, Message, SendMessageOptions, UserMessage } from '../types';
+import type { Conversation, ConversationSummary, ForwardTarget, Message, SendMessageOptions, UserMessage } from '../types';
 import { startMessageNotifications } from '../services/notificationService';
 import { wsService } from '../services/websocketService';
 import { parseDateTime } from '../utils/helpers';
@@ -325,6 +326,12 @@ export const useChat = () => {
         updateConversation((current) => (current ? { ...current, muted } : current));
     };
 
+    const forward = async (target: ForwardTarget, message: UserMessage) => {
+        await forwardMessage(target, message.text, {
+            forwardedFrom: message.forwardedFrom || message.senderId,
+        });
+    };
+
     return {
         summaries: { status: summaries.status, retry: summaries.retry, items: list },
         conversation: {
@@ -339,6 +346,7 @@ export const useChat = () => {
         actions: {
             selectConversation,
             send,
+            forward,
             loadOlder,
             markUnread,
             toggleArchive,

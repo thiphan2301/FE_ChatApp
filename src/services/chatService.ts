@@ -1,6 +1,6 @@
 import { wsService } from './websocketService';
 import type { ServerResponse } from './websocketService';
-import type { ChatEvent, Conversation, ConversationMember, ConversationSummary, SendMessageOptions, UserMessage } from '../types';
+import type { ChatEvent, Conversation, ConversationMember, ConversationSummary, ForwardTarget, SendMessageOptions, UserMessage } from '../types';
 import { parseDateTime } from '../utils/helpers';
 import { decodeMessagePayload, encodeMessagePayload } from '../utils/messageCodec';
 
@@ -166,6 +166,7 @@ const toUserMessage = (raw: RawRoomMessage): UserMessage => {
         sentAt: raw.createAt ?? new Date().toISOString(),
         reactions: [],
         replyTo: decoded.replyTo,
+        forwardedFrom: decoded.forwardedFrom,
         seenByIds: [],
     };
 };
@@ -205,6 +206,31 @@ export const getConversationSummaries = async (): Promise<ConversationSummary[]>
         .filter((item) => item.type === ROOM_TYPE)
         .map((item) => toSummary(item, prefs))
         .sort((first, second) => parseDateTime(second.lastMessageAt).getTime() - parseDateTime(first.lastMessageAt).getTime());
+};
+
+export const getForwardTargets = async (): Promise<ForwardTarget[]> => {
+    const response = await request('GET_USER_LIST');
+    const items = Array.isArray(response.data) ? (response.data as RawUserListItem[]) : [];
+    const seen = new Set<string>();
+    return [...items]
+        .sort((first, second) => parseDateTime(second.actionTime ?? '').getTime() - parseDateTime(first.actionTime ?? '').getTime())
+        .filter((item) => {
+            if (!item.name) return false;
+            const key = `${item.type}:${item.name.toLowerCase()}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        })
+        .map((item) => ({
+            id: item.name,
+            name: item.name,
+            type: item.type === ROOM_TYPE ? 'group' : 'direct',
+        }));
+};
+
+export const checkUserExists = async (username: string): Promise<boolean> => {
+    const response = await request('CHECK_USER_EXIST', { user: username.trim() });
+    return Boolean((response.data as { status?: boolean } | undefined)?.status);
 };
 
 export const getConversation = async (roomId: string): Promise<Conversation> => {
@@ -349,6 +375,31 @@ export const sendMessage = async (
     });
     wsService.sendMessage('SEND_CHAT', { type: 'room', to: roomId, mes: wireText });
     return message;
+};
+
+export const forwardMessage = async (
+    target: ForwardTarget,
+    text: string,
+    options?: SendMessageOptions,
+): Promise<void> => {
+    if (target.type === 'group') {
+        const message = await sendMessage(target.id, text, options);
+        const prefs = readPrefs();
+        emit({
+            type: 'message',
+            roomId: target.id,
+            message,
+            fromMe: true,
+            viewing: target.id === activeRoomId && !document.hidden,
+            unreadCount: prefs.unread[target.id] ?? 0,
+            archived: prefs.archivedIds.includes(target.id),
+        });
+        return;
+    }
+
+    if (!wsService.isConnected()) throw new Error(DISCONNECTED_ERROR);
+    const wireText = encodeMessagePayload(text, options);
+    wsService.sendMessage('SEND_CHAT', { type: 'people', to: target.id, mes: wireText });
 };
 
 export const markConversationUnread = async (roomId: string): Promise<void> => {
