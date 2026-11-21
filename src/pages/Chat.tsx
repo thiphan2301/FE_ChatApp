@@ -3,11 +3,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { UserAvatar } from '../components/common/UserAvatar';
 import { CopyMessageButton } from '../components/chat/MessageList';
+import { ForwardDialog } from '../components/chat/ForwardDialog';
 import { ReplyBanner, ReplyQuote } from '../components/chat/ReplyParts';
-import type { ReplyReference } from '../types';
+import type { ForwardTarget, ReplyReference } from '../types';
 import { wsService, type ServerResponse } from '../services/websocketService';
 import { getHiddenChats, hideChat, showChat } from '../utils/hiddenChats';
 import { createReplyReference, decodeMessagePayload, encodeMessagePayload } from '../utils/messageCodec';
+import { forwardMessage } from '../services/chatService';
 
 export default function Chat() {
     const location = useLocation();
@@ -31,6 +33,7 @@ export default function Chat() {
     const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
     const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
     const [replyTo, setReplyTo] = useState<ReplyReference | null>(null);
+    const [forwardMsg, setForwardMsg] = useState<{ text: string; sender: string } | null>(null);
     const [jumpHighlightId, setJumpHighlightId] = useState<string | null>(null);
     const [sendError, setSendError] = useState<string | null>(null);
     const [, setIsLoading] = useState(true);
@@ -444,6 +447,12 @@ export default function Chat() {
                                                 : 'bg-white border-gray-100 text-left'
                                                 } ${isHighlighted ? 'ring-2 ring-forest-soft' : ''}`}>
                                                 <span className="text-[10px] font-bold text-gray-600 block mb-0.5">{senderName}</span>
+                                                {decoded.forwardedFrom && (
+                                                    <p className="flex items-center gap-1.5 text-[11px] italic text-gray-400">
+                                                        <i className="fa-solid fa-share text-[10px]" aria-hidden="true"></i>
+                                                        <span>Đã chuyển tiếp từ {decoded.forwardedFrom}</span>
+                                                    </p>
+                                                )}
                                                 {decoded.replyTo && (
                                                     <div className="mb-1.5">
                                                         <ReplyQuote replyTo={decoded.replyTo} onJump={jumpToMessage} />
@@ -463,6 +472,20 @@ export default function Chat() {
                                                     className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-forest-soft focus:opacity-100 group-hover/bubble:opacity-100"
                                                 >
                                                     <i className="fa-solid fa-reply" aria-hidden="true"></i>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    aria-label="Chuyển tiếp tin nhắn"
+                                                    title="Chuyển tiếp tin nhắn"
+                                                    onClick={() =>
+                                                        setForwardMsg({
+                                                            text: decoded.text,
+                                                            sender: decoded.forwardedFrom || senderName,
+                                                        })
+                                                    }
+                                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-forest-soft focus:opacity-100 group-hover/bubble:opacity-100"
+                                                >
+                                                    <i className="fa-solid fa-share" aria-hidden="true"></i>
                                                 </button>
                                                 {decoded.text && <CopyMessageButton text={decoded.text} />}
                                             </div>
@@ -520,6 +543,23 @@ export default function Chat() {
                     </div>
                 )}
             </div>
+            {forwardMsg && (
+                <ForwardDialog
+                    previewText={forwardMsg.text}
+                    onForward={async (target: ForwardTarget) => {
+                        const options = { forwardedFrom: forwardMsg.sender };
+                        const isActiveChat =
+                            selectedChat &&
+                            selectedChat.name === target.id &&
+                            (selectedChat.type === 1) === (target.type === 'group');
+                        await forwardMessage(target, forwardMsg.text, options);
+                        if (isActiveChat) {
+                            appendOptimisticMessage(target.id, encodeMessagePayload(forwardMsg.text, options));
+                        }
+                    }}
+                    onClose={() => setForwardMsg(null)}
+                />
+            )}
         </div>
     );
 }

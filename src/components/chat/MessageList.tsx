@@ -55,6 +55,7 @@ interface MessageBubbleProps {
     isJumpHighlighted: boolean;
     onSelectSender?: () => void;
     onReply?: (message: UserMessage) => void;
+    onForward?: (message: UserMessage) => void;
     onJumpToMessage: (messageId: string) => void;
 }
 
@@ -118,6 +119,13 @@ export const CopyMessageButton = ({ text }: { text: string }) => {
     );
 };
 
+export const ForwardedBadge = ({ from }: { from: string }) => (
+    <p className="flex items-center gap-1.5 text-[11px] italic text-slate">
+        <i className="fa-solid fa-share text-[10px]" aria-hidden="true"></i>
+        <span>Đã chuyển tiếp từ {from}</span>
+    </p>
+);
+
 const MessageBubble = ({
                            message,
                            sender,
@@ -128,6 +136,7 @@ const MessageBubble = ({
                            isJumpHighlighted,
                            onSelectSender,
                            onReply,
+                           onForward,
                            onJumpToMessage,
                        }: MessageBubbleProps) => (
     <div data-message-id={message.id} className={`flex flex-col gap-1.5 ${isOwn ? 'items-end' : 'items-start'}`}>
@@ -153,6 +162,7 @@ const MessageBubble = ({
                     isOwn ? 'bg-sage' : 'bg-bubble'
                 } ${isActiveMatch ? 'ring-2 ring-yellow-400' : isJumpHighlighted ? 'ring-2 ring-forest-soft' : ''}`}
             >
+                {message.forwardedFrom && <ForwardedBadge from={message.forwardedFrom} />}
                 {message.replyTo && (
                     <ReplyQuote replyTo={message.replyTo} onJump={onJumpToMessage} />
                 )}
@@ -179,6 +189,17 @@ const MessageBubble = ({
                         <i className="fa-solid fa-reply" aria-hidden="true"></i>
                     </button>
                 )}
+                {onForward && (
+                    <button
+                        type="button"
+                        aria-label="Chuyển tiếp tin nhắn"
+                        title="Chuyển tiếp tin nhắn"
+                        onClick={() => onForward(message)}
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs text-mist opacity-0 transition hover:bg-paper hover:text-forest-soft focus:opacity-100 group-hover/bubble:opacity-100"
+                    >
+                        <i className="fa-solid fa-share" aria-hidden="true"></i>
+                    </button>
+                )}
                 <CopyMessageButton text={message.text} />
             </div>
         </div>
@@ -203,6 +224,7 @@ interface MessageListProps {
     onLoadOlder: () => void;
     onSelectMember: (member: ConversationMember) => void;
     onReply?: (message: UserMessage) => void;
+    onForward?: (message: UserMessage) => void;
 }
 
 const DayDivider = ({ label }: { label: string }) => (
@@ -229,6 +251,7 @@ export const MessageList = ({
                                 onLoadOlder,
                                 onSelectMember,
                                 onReply,
+                                onForward,
                             }: MessageListProps) => {
     const { messages, members, currentUserId, firstUnreadMessageId } = conversation;
     const containerRef = useRef<HTMLDivElement>(null);
@@ -361,6 +384,7 @@ export const MessageList = ({
                                     isActiveMatch={message.id === activeMatchId}
                                     isJumpHighlighted={message.id === jumpHighlightId}
                                     onReply={onReply}
+                                    onForward={onForward}
                                     onJumpToMessage={jumpToMessage}
                                 />
                             )}

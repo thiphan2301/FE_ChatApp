@@ -242,6 +242,7 @@ interface ConversationPaneProps {
     onLoadOlder: () => void;
     onDismissNotice: () => void;
     onSelectMember: (member: ConversationMember) => void;
+    onForward?: (message: UserMessage) => void;
 }
 
 const ConversationPane = ({
@@ -255,6 +256,7 @@ const ConversationPane = ({
                               onLoadOlder,
                               onDismissNotice,
                               onSelectMember,
+                              onForward,
                           }: ConversationPaneProps) => {
     const [searchOpen, setSearchOpen] = useState(false);
     const [query, setQuery] = useState('');
@@ -319,6 +321,7 @@ const ConversationPane = ({
                 onLoadOlder={onLoadOlder}
                 onSelectMember={onSelectMember}
                 onReply={handleReply}
+                onForward={onForward}
             />
             {notice && (
                 <div
@@ -353,6 +356,7 @@ interface ChatWindowProps {
     onLoadOlder: () => void;
     onDismissNotice: () => void;
     onSelectMember: (member: ConversationMember) => void;
+    onForward?: (message: UserMessage) => void;
     onRetry: () => void;
 }
 
