@@ -77,6 +77,7 @@ export interface Conversation {
     members: ConversationMember[];
     messages: Message[];
     hasMoreMessages: boolean;
+    firstUnreadMessageId?: string;
     sharedPhotos: SharedPhoto[];
     sharedFiles: SharedFile[];
 }
