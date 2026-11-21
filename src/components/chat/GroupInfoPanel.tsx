@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { IconButton, Toggle } from '../common/Controls';
 import { UserAvatar } from '../common/UserAvatar';
 import type { Conversation, ConversationMember, SharedFile, SharedPhoto } from '../../types';
-import { formatFileSize, formatSharedDay } from '../../utils/helpers';
-import { FileAttachment } from './ChatWindow';
+import { describeMember, formatFileSize, formatSharedDay } from '../../utils/helpers';
+import { FileAttachment } from './MessageList';
 
 const MEMBER_PREVIEW_COUNT = 3;
 const COPIED_FEEDBACK_MS = 2000;
@@ -12,14 +12,10 @@ interface MemberListProps {
     members: ConversationMember[];
     roomName: string;
     canInvite: boolean;
+    onSelectMember: (member: ConversationMember) => void;
 }
 
-const describeMember = (member: ConversationMember): string => {
-    if (member.role === 'admin') return 'Quản trị viên';
-    return member.online ? 'Đang hoạt động' : 'Không hoạt động';
-};
-
-const MemberList = ({ members, roomName, canInvite }: MemberListProps) => {
+const MemberList = ({ members, roomName, canInvite, onSelectMember }: MemberListProps) => {
     const [expanded, setExpanded] = useState(false);
     const [copied, setCopied] = useState(false);
     const visibleMembers = expanded ? members : members.slice(0, MEMBER_PREVIEW_COUNT);
@@ -56,12 +52,18 @@ const MemberList = ({ members, roomName, canInvite }: MemberListProps) => {
             </div>
             <ul className="flex flex-col gap-3">
                 {visibleMembers.map((member) => (
-                    <li key={member.id} className="flex items-center gap-3">
-                        <UserAvatar name={member.name} imageUrl={member.avatarUrl} size="sm" />
-                        <div className="min-w-0">
-                            <p className="truncate text-[13px] font-semibold text-ink">{member.name}</p>
-                            <p className="text-[11px] text-mist">{describeMember(member)}</p>
-                        </div>
+                    <li key={member.id}>
+                        <button
+                            type="button"
+                            onClick={() => onSelectMember(member)}
+                            className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-xl px-2 py-1.5 text-left transition hover:bg-white"
+                        >
+                            <UserAvatar name={member.name} imageUrl={member.avatarUrl} size="sm" />
+                            <div className="min-w-0">
+                                <p className="truncate text-[13px] font-semibold text-ink">{member.name}</p>
+                                <p className="text-[11px] text-mist">{describeMember(member)}</p>
+                            </div>
+                        </button>
                     </li>
                 ))}
             </ul>
@@ -118,9 +120,16 @@ interface GroupInfoPanelProps {
     onClose: () => void;
     onToggleMuted: (muted: boolean) => void;
     onLeave: () => void;
+    onSelectMember: (member: ConversationMember) => void;
 }
 
-export const GroupInfoPanel = ({ conversation, onClose, onToggleMuted, onLeave }: GroupInfoPanelProps) => {
+export const GroupInfoPanel = ({
+                                   conversation,
+                                   onClose,
+                                   onToggleMuted,
+                                   onLeave,
+                                   onSelectMember,
+                               }: GroupInfoPanelProps) => {
     const isGroup = conversation.type === 'group';
 
     return (
@@ -147,7 +156,12 @@ export const GroupInfoPanel = ({ conversation, onClose, onToggleMuted, onLeave }
             </div>
 
             <div className="border-b border-line px-5 py-4">
-                <MemberList members={conversation.members} roomName={conversation.name} canInvite={isGroup} />
+                <MemberList
+                    members={conversation.members}
+                    roomName={conversation.name}
+                    canInvite={isGroup}
+                    onSelectMember={onSelectMember}
+                />
             </div>
 
             <div className="border-b border-line px-5 py-4">

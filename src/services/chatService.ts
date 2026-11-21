@@ -79,6 +79,10 @@ const confirmSessionOnLogin = (response: ServerResponse): void => {
 
 let removeAuthListener = wsService.addListener(confirmSessionOnLogin);
 
+export const markSessionStale = (): void => {
+    sessionConfirmed = false;
+};
+
 export const resetChatSession = (): void => {
     sessionConfirmed = false;
     removeAuthListener();

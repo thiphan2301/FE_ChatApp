@@ -11,20 +11,25 @@ import {
     leaveConversation,
     markConversationRead,
     markConversationUnread,
+    markSessionStale,
     sendMessage,
     setActiveRoom,
     setConversationMuted,
     startRealtime,
     subscribeChatEvents,
 } from '../services/chatService';
-import type { Conversation, ConversationSummary, UserMessage } from '../types';
+import type { Conversation, ConversationSummary, Message, UserMessage } from '../types';
 import { startMessageNotifications } from '../services/notificationService';
+import { wsService } from '../services/websocketService';
 import { parseDateTime } from '../utils/helpers';
 import { useAsyncData } from './useAsyncData';
 
 const SEND_FAILED_MESSAGE = 'Không gửi được tin nhắn. Vui lòng thử lại.';
 const LOAD_OLDER_FAILED_MESSAGE = 'Không tải được tin nhắn cũ hơn. Vui lòng thử lại.';
 const LEAVE_FAILED_MESSAGE = 'Không thể rời phòng. Vui lòng thử lại.';
+const CONNECTION_POLL_MS = 1000;
+const OFFLINE_AFTER_POLLS = 2;
+const PRESENCE_REFRESH_MS = 30000;
 
 interface Presence {
     roomId: string;
@@ -36,6 +41,9 @@ const sortByRecent = (items: ConversationSummary[]): ConversationSummary[] =>
         (first, second) =>
             parseDateTime(second.lastMessageAt).getTime() - parseDateTime(first.lastMessageAt).getTime(),
     );
+
+const findFirstUnreadId = (messages: Message[], unreadCount: number): string | undefined =>
+    unreadCount > 0 ? messages[Math.max(messages.length - unreadCount, 0)]?.id : undefined;
 
 const toPreview = (message: UserMessage, fromMe: boolean): string =>
     `${fromMe ? 'Bạn' : message.senderId}: ${message.text}`;
@@ -50,6 +58,21 @@ const withPresence = (conversation: Conversation | null, presence: Presence | nu
             online: member.id === conversation.currentUserId || Boolean(known[member.id]),
         })),
     };
+};
+
+export const useOffline = (): boolean => {
+    const [offline, setOffline] = useState(false);
+    const missedPolls = useRef(0);
+
+    useEffect(() => {
+        const timer = window.setInterval(() => {
+            missedPolls.current = wsService.isConnected() ? 0 : missedPolls.current + 1;
+            setOffline(missedPolls.current >= OFFLINE_AFTER_POLLS);
+        }, CONNECTION_POLL_MS);
+        return () => window.clearInterval(timer);
+    }, []);
+
+    return offline;
 };
 
 export const useChatRealtime = () => {
@@ -78,22 +101,35 @@ export const useUnreadTotal = (): number => {
 };
 
 export const useChat = () => {
-    const summaries = useAsyncData(getConversationSummaries, 'summaries');
+    const [initialId, setInitialId] = useState<string | null>(null);
+    const summaries = useAsyncData(async () => {
+        const items = await getConversationSummaries();
+        setInitialId((current) => current ?? items.find((item) => !item.archived)?.id ?? null);
+        return items;
+    }, 'summaries');
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
     const [loadingOlder, setLoadingOlder] = useState(false);
     const [presence, setPresence] = useState<Presence | null>(null);
+    const [presenceTick, setPresenceTick] = useState(0);
+    const offline = useOffline();
+    const wasOffline = useRef(false);
     const pagesRef = useRef<Record<string, number>>({});
 
     const list = summaries.data ?? [];
-    const activeId = list.some((item) => item.id === selectedId)
+    const chosenId = list.some((item) => item.id === selectedId)
         ? selectedId
-        : (list.find((item) => !item.archived)?.id ?? null);
+        : list.find((item) => item.id === initialId && !item.archived)?.id;
+    const activeId = chosenId ?? list.find((item) => !item.archived)?.id ?? null;
+    const nextRoomId = (leavingId: string): string | null =>
+        list.find((item) => item.id !== leavingId && !item.archived)?.id ?? null;
 
     const conversation = useAsyncData<Conversation | null>(async () => {
         if (!activeId) return null;
         pagesRef.current[activeId] = 1;
-        return getConversation(activeId);
+        const unreadAtOpen = list.find((item) => item.id === activeId)?.unreadCount ?? 0;
+        const data = await getConversation(activeId);
+        return { ...data, firstUnreadMessageId: findFirstUnreadId(data.messages, unreadAtOpen) };
     }, activeId ?? 'none');
 
     const updateSummaries = summaries.updateData;
@@ -115,6 +151,27 @@ export const useChat = () => {
         );
     }, [roomId, updateSummaries]);
 
+    const refreshSummaries = summaries.refresh;
+    const refreshConversation = conversation.refresh;
+
+    useEffect(() => {
+        if (offline) {
+            wasOffline.current = true;
+            markSessionStale();
+            return;
+        }
+        if (wasOffline.current) {
+            wasOffline.current = false;
+            refreshSummaries();
+            refreshConversation();
+        }
+    }, [offline, refreshSummaries, refreshConversation]);
+
+    useEffect(() => {
+        const timer = window.setInterval(() => setPresenceTick((value) => value + 1), PRESENCE_REFRESH_MS);
+        return () => window.clearInterval(timer);
+    }, []);
+
     useEffect(() => {
         if (!roomId || !memberKey) return;
         let cancelled = false;
@@ -125,7 +182,7 @@ export const useChat = () => {
         return () => {
             cancelled = true;
         };
-    }, [roomId, memberKey, currentUserId]);
+    }, [roomId, memberKey, currentUserId, presenceTick]);
 
     useEffect(
         () =>
@@ -235,7 +292,7 @@ export const useChat = () => {
         updateSummaries((current) =>
             current.map((item) => (item.id === id ? { ...item, archived: !target.archived } : item)),
         );
-        if (id === activeId && !target.archived) setSelectedId(null);
+        if (id === activeId && !target.archived) setSelectedId(nextRoomId(id));
     };
 
     const addRoom = (room: ConversationSummary) => {
@@ -258,7 +315,7 @@ export const useChat = () => {
             return;
         }
         updateSummaries((current) => current.filter((item) => item.id !== id));
-        if (id === activeId) setSelectedId(null);
+        if (id === activeId) setSelectedId(nextRoomId(id));
         setNotice(null);
     };
 
@@ -278,6 +335,7 @@ export const useChat = () => {
         activeId,
         loadingOlder,
         notice,
+        offline,
         actions: {
             selectConversation,
             send,

@@ -1,4 +1,4 @@
-import type { ActiveDevice } from '../types';
+import type { ActiveDevice, ConversationMember } from '../types';
 
 const UNITS = ['B', 'KB', 'MB', 'GB'];
 
@@ -159,4 +159,42 @@ export const detectCurrentDevice = (userAgent: string = navigator.userAgent): Ac
                         ? 'Linux'
                         : 'thiết bị này';
     return { id: 'current-device', name: `${browser} trên ${system}`, isCurrent: true };
+};
+
+const foldCharacter = (character: string): string =>
+    character
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D')
+        .toLowerCase();
+
+export const findMatchRanges = (text: string, query: string): Array<[number, number]> => {
+    const needle = normalizeText(query);
+    if (!needle) return [];
+    let folded = '';
+    const starts: number[] = [];
+    const ends: number[] = [];
+    let offset = 0;
+    for (const character of text) {
+        const piece = foldCharacter(character);
+        for (let index = 0; index < piece.length; index += 1) {
+            starts.push(offset);
+            ends.push(offset + character.length);
+        }
+        folded += piece;
+        offset += character.length;
+    }
+    const ranges: Array<[number, number]> = [];
+    let from = 0;
+    for (let found = folded.indexOf(needle, from); found !== -1; found = folded.indexOf(needle, from)) {
+        ranges.push([starts[found], ends[found + needle.length - 1]]);
+        from = found + needle.length;
+    }
+    return ranges;
+};
+
+export const describeMember = (member: ConversationMember): string => {
+    if (member.role === 'admin') return 'Quản trị viên';
+    return member.online ? 'Đang hoạt động' : 'Không hoạt động';
 };
