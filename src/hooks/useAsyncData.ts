@@ -13,8 +13,10 @@ interface AsyncResult<T> {
 
 export const useAsyncData = <T,>(load: () => Promise<T>, requestKey: string) => {
     const [attempt, setAttempt] = useState(0);
+    const [refreshTick, setRefreshTick] = useState(0);
     const [result, setResult] = useState<AsyncResult<T> | null>(null);
     const loadRef = useRef(load);
+    const handledRefreshTick = useRef(0);
     const fullKey = `${requestKey}:${attempt}`;
 
     useEffect(() => {
@@ -36,11 +38,30 @@ export const useAsyncData = <T,>(load: () => Promise<T>, requestKey: string) => 
         };
     }, [fullKey]);
 
+    useEffect(() => {
+        if (refreshTick === handledRefreshTick.current) return;
+        handledRefreshTick.current = refreshTick;
+        let cancelled = false;
+        loadRef
+            .current()
+            .then((data) => {
+                if (cancelled) return;
+                setResult((previous) =>
+                    previous && previous.requestKey === fullKey ? { requestKey: fullKey, data, failed: false } : previous,
+                );
+            })
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+    }, [refreshTick, fullKey]);
+
     const isCurrent = result?.requestKey === fullKey;
     const status: AsyncStatus = !isCurrent ? 'loading' : result.failed ? 'error' : 'ready';
     const data = isCurrent ? result.data : undefined;
 
     const retry = useCallback(() => setAttempt((value) => value + 1), []);
+    const refresh = useCallback(() => setRefreshTick((value) => value + 1), []);
 
     const updateData = useCallback(
         (updater: (current: T) => T) => {
@@ -53,7 +74,7 @@ export const useAsyncData = <T,>(load: () => Promise<T>, requestKey: string) => 
         [fullKey],
     );
 
-    return { status, data, retry, updateData };
+    return { status, data, retry, refresh, updateData };
 };
 
 export const useClickOutside = (
@@ -87,10 +108,10 @@ export const useCurrentUser = (refreshKey: string) => {
         let cancelled = false;
         const loadUser = () => {
             getCurrentUser()
-            .then((profile) => {
-                if (!cancelled) setUser(profile);
-            })
-            .catch(() => undefined);
+                .then((profile) => {
+                    if (!cancelled) setUser(profile);
+                })
+                .catch(() => undefined);
         };
         loadUser();
         window.addEventListener(PROFILE_UPDATED_EVENT, loadUser);
