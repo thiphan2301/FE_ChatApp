@@ -12,12 +12,14 @@ interface WireReply {
 interface WirePayload {
     r?: WireReply;
     f?: string;
+    img?: string;
 }
 
 export interface DecodedMessagePayload {
     text: string;
     replyTo?: ReplyReference;
     forwardedFrom?: string;
+    imageUrl?: string;
 }
 
 const truncateReplyText = (text: string): string => {
@@ -27,20 +29,31 @@ const truncateReplyText = (text: string): string => {
     return `${chars.slice(0, REPLY_PREVIEW_MAX_LENGTH - 1).join('')}…`;
 };
 
+const isSafeImageUrl = (url: unknown): url is string => {
+    if (typeof url !== 'string') return false;
+    const trimmed = url.trim();
+    return (
+        /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(trimmed) ||
+        /^https?:\/\/\S+$/i.test(trimmed)
+    );
+};
+
 export const createReplyReference = (
     senderId: string,
     text: string,
     messageId?: string,
+    hasImage?: boolean,
 ): ReplyReference => ({
     messageId,
     senderId,
-    text: truncateReplyText(text),
+    text: truncateReplyText(text) || (hasImage ? '[Hình ảnh]' : ''),
 });
 
 export const encodeMessagePayload = (text: string, options?: SendMessageOptions): string => {
     const reply = options?.replyTo;
     const forwardedFrom = options?.forwardedFrom?.trim();
-    if (!reply && !forwardedFrom) return text;
+    const imageUrl = options?.imageUrl?.trim();
+    if (!reply && !forwardedFrom && !imageUrl) return text;
 
     const wire: WirePayload = {};
     if (reply) {
@@ -52,6 +65,9 @@ export const encodeMessagePayload = (text: string, options?: SendMessageOptions)
     }
     if (forwardedFrom) {
         wire.f = forwardedFrom;
+    }
+    if (imageUrl) {
+        wire.img = imageUrl;
     }
 
     const header = `${WIRE_PREFIX}${JSON.stringify(wire)}`;
@@ -81,13 +97,15 @@ export const decodeMessagePayload = (raw: string): DecodedMessagePayload => {
                 : undefined;
         const forwardedFrom =
             typeof wire.f === 'string' && wire.f.trim() ? wire.f.trim() : undefined;
+        const imageUrl = isSafeImageUrl(wire.img) ? wire.img.trim() : undefined;
 
-        if (!replyTo && !forwardedFrom) return { text: raw };
+        if (!replyTo && !forwardedFrom && !imageUrl) return { text: raw };
 
         return {
             text: body,
             replyTo,
             forwardedFrom,
+            imageUrl,
         };
     } catch {
         return { text: raw };

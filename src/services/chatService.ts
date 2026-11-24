@@ -1,6 +1,15 @@
 import { wsService } from './websocketService';
 import type { ServerResponse } from './websocketService';
-import type { ChatEvent, Conversation, ConversationMember, ConversationSummary, ForwardTarget, SendMessageOptions, UserMessage } from '../types';
+import type {
+    ChatEvent,
+    Conversation,
+    ConversationMember,
+    ConversationSummary,
+    ForwardTarget,
+    SendMessageOptions,
+    SharedPhoto,
+    UserMessage,
+} from '../types';
 import { parseDateTime } from '../utils/helpers';
 import { decodeMessagePayload, encodeMessagePayload } from '../utils/messageCodec';
 
@@ -167,6 +176,7 @@ const toUserMessage = (raw: RawRoomMessage): UserMessage => {
         reactions: [],
         replyTo: decoded.replyTo,
         forwardedFrom: decoded.forwardedFrom,
+        imageUrl: decoded.imageUrl,
         seenByIds: [],
     };
 };
@@ -233,10 +243,17 @@ export const checkUserExists = async (username: string): Promise<boolean> => {
     return Boolean((response.data as { status?: boolean } | undefined)?.status);
 };
 
+const extractSharedPhotos = (messages: UserMessage[]): SharedPhoto[] =>
+    messages
+        .filter((msg) => Boolean(msg.imageUrl))
+        .map((msg) => ({ id: msg.id, url: msg.imageUrl!, alt: msg.text || 'Hình ảnh' }))
+        .reverse();
+
 export const getConversation = async (roomId: string): Promise<Conversation> => {
     const response = await request('GET_ROOM_CHAT_MES', { name: roomId, page: 1 });
     const room = (response.data ?? {}) as RawRoomData;
     const prefs = readPrefs();
+    const messages = toMessages(room.chatMess);
     return {
         id: roomId,
         type: 'group',
@@ -245,9 +262,9 @@ export const getConversation = async (roomId: string): Promise<Conversation> => 
         muted: prefs.mutedIds.includes(roomId),
         currentUserId: getUsername(),
         members: toMembers(room.user),
-        messages: toMessages(room.chatMess),
+        messages,
         hasMoreMessages: (room.chatMess ?? []).length >= MESSAGE_PAGE_SIZE,
-        sharedPhotos: [],
+        sharedPhotos: extractSharedPhotos(messages),
         sharedFiles: [],
     };
 };
