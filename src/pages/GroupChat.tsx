@@ -90,6 +90,12 @@ export default function GroupChat() {
             {forwardMessageTarget && (
                 <ForwardDialog
                     previewText={forwardMessageTarget.text}
+                    previewImageUrl={
+                        forwardMessageTarget.imageUrl ??
+                        (forwardMessageTarget.attachment?.mimeType.startsWith('image/')
+                            ? forwardMessageTarget.attachment.url
+                            : undefined)
+                    }
                     initialTargets={summaries.items.map((item) => ({
                         id: item.id,
                         name: item.name,

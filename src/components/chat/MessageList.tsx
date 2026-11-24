@@ -10,6 +10,7 @@ import {
     getFileExtension,
     isSameDay,
 } from '../../utils/helpers';
+import { ImagePreviewModal } from './ImagePreviewModal';
 import { ReplyQuote } from './ReplyParts';
 
 const SEEN_AVATAR_LIMIT = 2;
@@ -56,6 +57,7 @@ interface MessageBubbleProps {
     onSelectSender?: () => void;
     onReply?: (message: UserMessage) => void;
     onForward?: (message: UserMessage) => void;
+    onPreviewImage: (url: string, caption?: string) => void;
     onJumpToMessage: (messageId: string) => void;
 }
 
@@ -137,6 +139,7 @@ const MessageBubble = ({
                            onSelectSender,
                            onReply,
                            onForward,
+                           onPreviewImage,
                            onJumpToMessage,
                        }: MessageBubbleProps) => (
     <div data-message-id={message.id} className={`flex flex-col gap-1.5 ${isOwn ? 'items-end' : 'items-start'}`}>
@@ -166,9 +169,25 @@ const MessageBubble = ({
                 {message.replyTo && (
                     <ReplyQuote replyTo={message.replyTo} onJump={onJumpToMessage} />
                 )}
-                <p className="whitespace-pre-line break-words">
-                    <HighlightedText text={message.text} query={highlightQuery} />
-                </p>
+                {message.imageUrl && (
+                    <button
+                        type="button"
+                        onClick={() => onPreviewImage(message.imageUrl!, message.text || undefined)}
+                        className="overflow-hidden rounded-xl text-left"
+                    >
+                        <img
+                            src={message.imageUrl}
+                            alt={message.text || 'Hình ảnh đã gửi'}
+                            className="max-h-60 max-w-60 rounded-xl object-cover transition hover:opacity-95"
+                            loading="lazy"
+                        />
+                    </button>
+                )}
+                {message.text && (
+                    <p className="whitespace-pre-line break-words">
+                        <HighlightedText text={message.text} query={highlightQuery} />
+                    </p>
+                )}
                 {message.attachment && (
                     <FileAttachment
                         fileName={message.attachment.fileName}
@@ -200,7 +219,7 @@ const MessageBubble = ({
                         <i className="fa-solid fa-share" aria-hidden="true"></i>
                     </button>
                 )}
-                <CopyMessageButton text={message.text} />
+                {message.text && <CopyMessageButton text={message.text} />}
             </div>
         </div>
         {message.reactions.length > 0 && (
@@ -258,6 +277,7 @@ export const MessageList = ({
     const anchorRef = useRef<{ height: number; top: number } | null>(null);
     const jumpTimerRef = useRef<number | null>(null);
     const [jumpHighlightId, setJumpHighlightId] = useState<string | null>(null);
+    const [previewImage, setPreviewImage] = useState<{ url: string; caption?: string } | null>(null);
     const firstMessageId = messages[0]?.id;
     const lastMessage = messages[messages.length - 1];
     const lastMessageId = lastMessage?.id;
@@ -385,6 +405,7 @@ export const MessageList = ({
                                     isJumpHighlighted={message.id === jumpHighlightId}
                                     onReply={onReply}
                                     onForward={onForward}
+                                    onPreviewImage={(url, caption) => setPreviewImage({ url, caption })}
                                     onJumpToMessage={jumpToMessage}
                                 />
                             )}
@@ -401,6 +422,13 @@ export const MessageList = ({
                     <i className="fa-solid fa-arrow-down" aria-hidden="true"></i>
                     {unseenCount > 0 ? `${unseenCount} tin nhắn mới` : 'Xuống tin mới nhất'}
                 </button>
+            )}
+            {previewImage && (
+                <ImagePreviewModal
+                    imageUrl={previewImage.url}
+                    caption={previewImage.caption}
+                    onClose={() => setPreviewImage(null)}
+                />
             )}
         </div>
     );

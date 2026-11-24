@@ -4,10 +4,12 @@ import { useLocation } from 'react-router-dom';
 import { UserAvatar } from '../components/common/UserAvatar';
 import { CopyMessageButton } from '../components/chat/MessageList';
 import { ForwardDialog } from '../components/chat/ForwardDialog';
+import { ImageDraftBanner, ImagePreviewModal } from '../components/chat/ImagePreviewModal';
 import { ReplyBanner, ReplyQuote } from '../components/chat/ReplyParts';
 import type { ForwardTarget, ReplyReference } from '../types';
 import { wsService, type ServerResponse } from '../services/websocketService';
 import { getHiddenChats, hideChat, showChat } from '../utils/hiddenChats';
+import { extractClipboardImage, IMAGE_ACCEPT_TYPES, uploadImageFile } from '../utils/imageCompress';
 import { createReplyReference, decodeMessagePayload, encodeMessagePayload } from '../utils/messageCodec';
 import { forwardMessage } from '../services/chatService';
 
@@ -33,13 +35,17 @@ export default function Chat() {
     const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
     const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
     const [replyTo, setReplyTo] = useState<ReplyReference | null>(null);
-    const [forwardMsg, setForwardMsg] = useState<{ text: string; sender: string } | null>(null);
+    const [forwardMsg, setForwardMsg] = useState<{ text: string; sender: string; imageUrl?: string } | null>(null);
+    const [draftImage, setDraftImage] = useState<string | null>(null);
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const [previewImage, setPreviewImage] = useState<{ url: string; caption?: string } | null>(null);
     const [jumpHighlightId, setJumpHighlightId] = useState<string | null>(null);
     const [sendError, setSendError] = useState<string | null>(null);
     const [, setIsLoading] = useState(true);
 
     const chatContainerRef = useRef<HTMLDivElement | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
     const jumpTimerRef = useRef<number | null>(null);
     const localCounterRef = useRef(0);
     const pendingSendsRef = useRef<{ to: string; mes: string; localId: string; expiresAt: number }[]>([]);
@@ -235,6 +241,7 @@ export default function Chat() {
     const handleSelectChat = (chat: any) => {
         setOpenMenuFor(null);
         setReplyTo(null);
+        setDraftImage(null);
         setSendError(null);
         setSelectedChat(chat);
         selectedChatRef.current = chat;
@@ -281,6 +288,20 @@ export default function Chat() {
         jumpTimerRef.current = window.setTimeout(() => setJumpHighlightId(null), 1500);
     };
 
+    const attachImageFile = async (file: File) => {
+        setSendError(null);
+        setUploadingImage(true);
+        try {
+            const uploadedUrl = await uploadImageFile(file);
+            setDraftImage(uploadedUrl);
+            inputRef.current?.focus();
+        } catch (error) {
+            setSendError(error instanceof Error ? error.message : 'Không thể tải hình ảnh.');
+        } finally {
+            setUploadingImage(false);
+        }
+    };
+
     const appendOptimisticMessage = (targetName: string, wireText: string) => {
         localCounterRef.current += 1;
         const localId = `local-${Date.now()}-${localCounterRef.current}`;
@@ -306,9 +327,12 @@ export default function Chat() {
     const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();
         const trimmed = inputText.trim();
-        if (!trimmed || !selectedChat) return;
+        if ((!trimmed && !draftImage) || !selectedChat || uploadingImage) return;
 
-        const wireText = encodeMessagePayload(trimmed, replyTo ? { replyTo } : undefined);
+        const wireText = encodeMessagePayload(trimmed, {
+            ...(replyTo ? { replyTo } : {}),
+            ...(draftImage ? { imageUrl: draftImage } : {}),
+        });
         wsService.sendMessage('SEND_CHAT', {
             type: selectedChat.type === 1 ? 'room' : 'people',
             to: selectedChat.name,
@@ -318,6 +342,7 @@ export default function Chat() {
 
         setInputText('');
         setReplyTo(null);
+        setDraftImage(null);
         setSendError(null);
     };
 
@@ -458,7 +483,21 @@ export default function Chat() {
                                                         <ReplyQuote replyTo={decoded.replyTo} onJump={jumpToMessage} />
                                                     </div>
                                                 )}
-                                                <p className="whitespace-pre-line break-words">{decoded.text}</p>
+                                                {decoded.imageUrl && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPreviewImage({ url: decoded.imageUrl!, caption: decoded.text || undefined })}
+                                                        className="mb-1.5 block overflow-hidden rounded-xl"
+                                                    >
+                                                        <img
+                                                            src={decoded.imageUrl}
+                                                            alt={decoded.text || 'Hình ảnh đã gửi'}
+                                                            className="max-h-60 max-w-60 rounded-xl object-cover transition hover:opacity-95"
+                                                            loading="lazy"
+                                                        />
+                                                    </button>
+                                                )}
+                                                {decoded.text && <p className="whitespace-pre-line break-words">{decoded.text}</p>}
                                             </div>
                                             <div className={`flex shrink-0 items-center gap-0.5 ${isMe ? 'flex-row-reverse' : ''}`}>
                                                 <button
@@ -466,7 +505,7 @@ export default function Chat() {
                                                     aria-label="Trả lời tin nhắn"
                                                     title="Trả lời tin nhắn"
                                                     onClick={() => {
-                                                        setReplyTo(createReplyReference(senderName || 'Người dùng', decoded.text, msgId));
+                                                        setReplyTo(createReplyReference(senderName || 'Người dùng', decoded.text, msgId, Boolean(decoded.imageUrl)));
                                                         inputRef.current?.focus();
                                                     }}
                                                     className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-forest-soft focus:opacity-100 group-hover/bubble:opacity-100"
@@ -481,6 +520,7 @@ export default function Chat() {
                                                         setForwardMsg({
                                                             text: decoded.text,
                                                             sender: decoded.forwardedFrom || senderName,
+                                                            imageUrl: decoded.imageUrl,
                                                         })
                                                     }
                                                     className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-forest-soft focus:opacity-100 group-hover/bubble:opacity-100"
@@ -506,6 +546,24 @@ export default function Chat() {
                         )}
 
                         <form onSubmit={handleSendMessage} className="p-4 bg-white border-t border-gray-200">
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept={IMAGE_ACCEPT_TYPES}
+                                onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    event.target.value = '';
+                                    if (file) void attachImageFile(file);
+                                }}
+                                className="hidden"
+                            />
+                            {uploadingImage && (
+                                <p role="status" className="mb-2 flex items-center gap-2 rounded-xl bg-[#F4F4F0] px-3 py-2 text-xs text-gray-500">
+                                    <i className="fa-solid fa-circle-notch fa-spin text-[#1C3A32]" aria-hidden="true"></i>
+                                    <span>Đang tải ảnh lên...</span>
+                                </p>
+                            )}
+                            {draftImage && <ImageDraftBanner imageUrl={draftImage} onRemove={() => setDraftImage(null)} />}
                             {replyTo && <ReplyBanner replyTo={replyTo} onCancel={() => setReplyTo(null)} />}
                             <div className="flex items-center bg-[#F4F4F0] px-4 py-2.5 rounded-2xl gap-3">
                                 <button type="button" className="text-gray-400 hover:text-gray-600 text-base cursor-pointer">
@@ -522,16 +580,33 @@ export default function Chat() {
                                             setReplyTo(null);
                                         }
                                     }}
+                                    onPaste={(event) => {
+                                        const file = extractClipboardImage(event.clipboardData?.items);
+                                        if (!file) return;
+                                        event.preventDefault();
+                                        void attachImageFile(file);
+                                    }}
                                     placeholder="Nhắn gì đó nhé..."
                                     className="flex-1 bg-transparent border-none outline-none text-sm text-gray-700 placeholder-gray-400"
                                 />
                                 <button type="button" className="text-gray-400 hover:text-gray-600 cursor-pointer">
                                     <i className="fa-regular fa-face-smile"></i>
                                 </button>
-                                <button type="button" className="text-gray-400 hover:text-gray-600 cursor-pointer">
-                                    <i className="fa-solid fa-paperclip"></i>
+                                <button
+                                    type="button"
+                                    aria-label="Gửi hình ảnh"
+                                    title="Gửi hình ảnh"
+                                    disabled={uploadingImage}
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="text-gray-400 hover:text-gray-600 disabled:opacity-50 cursor-pointer"
+                                >
+                                    <i className="fa-regular fa-image"></i>
                                 </button>
-                                <button type="submit" className="w-8 h-8 rounded-full bg-[#1C3A32] text-white flex items-center justify-center hover:bg-[#152c25] transition cursor-pointer shrink-0">
+                                <button
+                                    type="submit"
+                                    disabled={uploadingImage}
+                                    className="w-8 h-8 rounded-full bg-[#1C3A32] text-white flex items-center justify-center hover:bg-[#152c25] disabled:opacity-50 transition cursor-pointer shrink-0"
+                                >
                                     <i className="fa-solid fa-arrow-up text-xs"></i>
                                 </button>
                             </div>
@@ -546,8 +621,12 @@ export default function Chat() {
             {forwardMsg && (
                 <ForwardDialog
                     previewText={forwardMsg.text}
+                    previewImageUrl={forwardMsg.imageUrl}
                     onForward={async (target: ForwardTarget) => {
-                        const options = { forwardedFrom: forwardMsg.sender };
+                        const options = {
+                            forwardedFrom: forwardMsg.sender,
+                            imageUrl: forwardMsg.imageUrl,
+                        };
                         const isActiveChat =
                             selectedChat &&
                             selectedChat.name === target.id &&
@@ -558,6 +637,13 @@ export default function Chat() {
                         }
                     }}
                     onClose={() => setForwardMsg(null)}
+                />
+            )}
+            {previewImage && (
+                <ImagePreviewModal
+                    imageUrl={previewImage.url}
+                    caption={previewImage.caption}
+                    onClose={() => setPreviewImage(null)}
                 />
             )}
         </div>

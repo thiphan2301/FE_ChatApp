@@ -3,6 +3,7 @@ import { IconButton, Toggle } from '../common/Controls';
 import { UserAvatar } from '../common/UserAvatar';
 import type { Conversation, ConversationMember, SharedFile, SharedPhoto } from '../../types';
 import { describeMember, formatFileSize, formatSharedDay } from '../../utils/helpers';
+import { ImagePreviewModal } from './ImagePreviewModal';
 import { FileAttachment } from './MessageList';
 
 const MEMBER_PREVIEW_COUNT = 3;
@@ -85,35 +86,53 @@ interface SharedMediaProps {
     files: SharedFile[];
 }
 
-const SharedMedia = ({ photos, files }: SharedMediaProps) => (
-    <section aria-label="Ảnh và tệp đã chia sẻ" className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-            <h3 className="text-[13px] font-semibold text-ink">Ảnh &amp; tệp đã chia sẻ</h3>
-            <i className="fa-solid fa-chevron-right text-[10px] text-slate" aria-hidden="true"></i>
-        </div>
-        {photos.length === 0 && files.length === 0 && (
-            <p className="text-[13px] text-mist">Chưa có ảnh hoặc tệp nào được chia sẻ.</p>
-        )}
-        {photos.length > 0 && (
-            <ul className="grid grid-cols-3 gap-2">
-                {photos.map((photo) => (
-                    <li key={photo.id} className="aspect-square overflow-hidden rounded-lg bg-sand">
-                        <img src={photo.url} alt={photo.alt} className="h-full w-full object-cover" />
-                    </li>
-                ))}
-            </ul>
-        )}
-        {files.map((file) => (
-            <FileAttachment
-                key={file.id}
-                fileName={file.fileName}
-                subtitle={`${formatSharedDay(file.sharedAt)} · ${formatFileSize(file.sizeBytes)}`}
-                downloadUrl={file.url}
-                bordered
-            />
-        ))}
-    </section>
-);
+const SharedMedia = ({ photos, files }: SharedMediaProps) => {
+    const [previewPhoto, setPreviewPhoto] = useState<SharedPhoto | null>(null);
+
+    return (
+        <section aria-label="Ảnh và tệp đã chia sẻ" className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+                <h3 className="text-[13px] font-semibold text-ink">Ảnh &amp; tệp đã chia sẻ</h3>
+                <i className="fa-solid fa-chevron-right text-[10px] text-slate" aria-hidden="true"></i>
+            </div>
+            {photos.length === 0 && files.length === 0 && (
+                <p className="text-[13px] text-mist">Chưa có ảnh hoặc tệp nào được chia sẻ.</p>
+            )}
+            {photos.length > 0 && (
+                <ul className="grid grid-cols-3 gap-2">
+                    {photos.map((photo) => (
+                        <li key={photo.id} className="aspect-square overflow-hidden rounded-lg bg-sand">
+                            <button
+                                type="button"
+                                onClick={() => setPreviewPhoto(photo)}
+                                aria-label={`Xem ${photo.alt}`}
+                                className="h-full w-full"
+                            >
+                                <img src={photo.url} alt={photo.alt} className="h-full w-full object-cover transition hover:scale-105" />
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            )}
+            {files.map((file) => (
+                <FileAttachment
+                    key={file.id}
+                    fileName={file.fileName}
+                    subtitle={`${formatSharedDay(file.sharedAt)} · ${formatFileSize(file.sizeBytes)}`}
+                    downloadUrl={file.url}
+                    bordered
+                />
+            ))}
+            {previewPhoto && (
+                <ImagePreviewModal
+                    imageUrl={previewPhoto.url}
+                    caption={previewPhoto.alt}
+                    onClose={() => setPreviewPhoto(null)}
+                />
+            )}
+        </section>
+    );
+};
 
 interface GroupInfoPanelProps {
     conversation: Conversation;
