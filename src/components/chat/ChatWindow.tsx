@@ -36,8 +36,6 @@ const ChatHeader = ({ conversation, infoPanelOpen, searchOpen, onToggleSearch, o
             </div>
         </div>
         <div className="flex items-center gap-1">
-            <IconButton icon="fa-solid fa-phone" label="Gọi thoại" />
-            <IconButton icon="fa-solid fa-video" label="Gọi video" />
             <IconButton
                 icon="fa-solid fa-magnifying-glass"
                 label="Tìm trong hội thoại"
@@ -109,7 +107,6 @@ const MessageInput = ({ offline, onSend }: MessageInputProps) => {
     return (
         <div className="shrink-0 px-6 pb-4">
             <div className="flex items-end gap-2 rounded-2xl border border-line bg-paper px-3 py-2.5 focus-within:border-forest-soft">
-                <IconButton icon="fa-solid fa-plus" label="Thêm nội dung" />
                 <textarea
                     ref={textareaRef}
                     value={text}
@@ -121,7 +118,6 @@ const MessageInput = ({ offline, onSend }: MessageInputProps) => {
                     className="max-h-30 min-h-9 flex-1 resize-none bg-transparent py-2 text-sm text-ink outline-none placeholder:text-mist"
                 />
                 <EmojiPicker onSelect={insertEmoji} />
-                <IconButton icon="fa-solid fa-paperclip" label="Đính kèm tệp" />
                 <button
                     type="button"
                     aria-label="Gửi tin nhắn"
