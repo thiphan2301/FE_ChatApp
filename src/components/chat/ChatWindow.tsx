@@ -1,176 +1,19 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { IconButton, StatusPanel } from '../common/Controls';
 import { UserAvatar } from '../common/UserAvatar';
-import type { Conversation, ConversationMember, UserMessage } from '../../types';
-import {
-    formatDayLabel,
-    formatFileSize,
-    formatTime,
-    getFileExtension,
-    isSameDay,
-} from '../../utils/helpers';
+import type { Conversation, ConversationMember } from '../../types';
+import { findMatchRanges } from '../../utils/helpers';
+import { EmojiPicker } from './EmojiPicker';
+import { MessageList } from './MessageList';
 
-const SEEN_AVATAR_LIMIT = 2;
 const MESSAGE_INPUT_MAX_HEIGHT_PX = 120;
-
-interface TypingIndicatorProps {
-    name: string;
-}
-
-const DOT_DELAYS = ['0ms', '200ms', '400ms'];
-
-const TypingIndicator = ({ name }: TypingIndicatorProps) => (
-    <div className="flex items-center gap-2 text-xs text-mist" role="status">
-    <span className="flex gap-0.5" aria-hidden="true">
-      {DOT_DELAYS.map((delay) => (
-          <span
-              key={delay}
-              style={{ animationDelay: delay }}
-              className="h-1 w-1 animate-pulse rounded-full bg-forest-soft"
-          />
-      ))}
-    </span>
-        <span>{name} đang nhập...</span>
-    </div>
-);
-
-interface FileAttachmentProps {
-    fileName: string;
-    subtitle: string;
-    downloadUrl: string;
-    bordered?: boolean;
-}
-
-export const FileAttachment = ({ fileName, subtitle, downloadUrl, bordered = false }: FileAttachmentProps) => (
-    <div
-        className={`flex items-center gap-3 rounded-xl bg-white p-2.5 ${bordered ? 'border border-line' : ''}`}
-    >
-    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sage text-forest-soft">
-      <i className="fa-regular fa-file-lines" aria-hidden="true"></i>
-    </span>
-        <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-semibold text-ink">{fileName}</p>
-            <p className="text-[11px] text-mist">{subtitle}</p>
-        </div>
-        <a
-            href={downloadUrl}
-            download={fileName}
-            aria-label={`Tải ${fileName}`}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate transition hover:bg-sage hover:text-forest-soft"
-        >
-            <i className="fa-solid fa-download text-sm" aria-hidden="true"></i>
-        </a>
-    </div>
-);
-
-interface MessageBubbleProps {
-    message: UserMessage;
-    sender?: ConversationMember;
-    isOwn: boolean;
-    seenBy: ConversationMember[];
-}
-
-const SeenBy = ({ members }: { members: ConversationMember[] }) => {
-    const remaining = members.length - SEEN_AVATAR_LIMIT;
-    return (
-        <div className="flex items-center gap-1.5 text-[11px] text-mist">
-      <span className="flex -space-x-1">
-        {members.slice(0, SEEN_AVATAR_LIMIT).map((member) => (
-            <span key={member.id} className="rounded-full ring-2 ring-white">
-            <UserAvatar name={member.name} imageUrl={member.avatarUrl} size="xs" />
-          </span>
-        ))}
-      </span>
-            <span>{remaining > 0 ? `+${remaining} đã xem` : 'đã xem'}</span>
-        </div>
-    );
-};
-
-const MessageBubble = ({ message, sender, isOwn, seenBy }: MessageBubbleProps) => (
-    <div className={`flex flex-col gap-1.5 ${isOwn ? 'items-end' : 'items-start'}`}>
-        {!isOwn && (
-            <p className="text-xs text-mist">
-                {sender?.name ?? 'Người dùng'} · {formatTime(message.sentAt)}
-            </p>
-        )}
-        <div
-            className={`flex max-w-[75%] flex-col gap-3 rounded-2xl px-4 py-3 text-sm leading-relaxed text-ink ${
-                isOwn ? 'bg-sage' : 'bg-bubble'
-            }`}
-        >
-            <p className="whitespace-pre-line break-words">{message.text}</p>
-            {message.attachment && (
-                <FileAttachment
-                    fileName={message.attachment.fileName}
-                    subtitle={`${getFileExtension(message.attachment.fileName)} · ${formatFileSize(message.attachment.sizeBytes)}`}
-                    downloadUrl={message.attachment.url}
-                />
-            )}
-        </div>
-        {message.reactions.length > 0 && (
-            <ul className="flex gap-1.5">
-                {message.reactions.map((reaction) => (
-                    <li key={reaction.emoji} className="rounded-full bg-paper px-2.5 py-1 text-xs text-slate">
-                        {reaction.emoji} {reaction.count}
-                    </li>
-                ))}
-            </ul>
-        )}
-        {isOwn && seenBy.length > 0 && <SeenBy members={seenBy} />}
-    </div>
-);
-
-interface MessageListProps {
-    conversation: Conversation;
-}
-
-const DayDivider = ({ label }: { label: string }) => (
-    <div className="flex items-center gap-4 text-xs text-mist">
-        <span className="h-px flex-1 bg-line" />
-        <span>{label}</span>
-        <span className="h-px flex-1 bg-line" />
-    </div>
-);
-
-const MessageList = ({ conversation }: MessageListProps) => {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const { messages, members, currentUserId } = conversation;
-
-    useEffect(() => {
-        const container = containerRef.current;
-        if (container) container.scrollTop = container.scrollHeight;
-    }, [messages.length, conversation.id]);
-
-    return (
-        <div ref={containerRef} className="flex flex-1 flex-col gap-5 overflow-y-auto px-8 py-5">
-            {messages.map((message, index) => {
-                const startsNewDay = index === 0 || !isSameDay(messages[index - 1].sentAt, message.sentAt);
-                return (
-                    <Fragment key={message.id}>
-                        {startsNewDay && <DayDivider label={formatDayLabel(message.sentAt)} />}
-                        {message.kind === 'system' ? (
-                            <p className="text-center text-xs text-mist">
-                                {message.text} · {formatTime(message.sentAt)}
-                            </p>
-                        ) : (
-                            <MessageBubble
-                                message={message}
-                                sender={members.find((member) => member.id === message.senderId)}
-                                isOwn={message.senderId === currentUserId}
-                                seenBy={members.filter((member) => message.seenByIds.includes(member.id))}
-                            />
-                        )}
-                    </Fragment>
-                );
-            })}
-        </div>
-    );
-};
 
 interface ChatHeaderProps {
     conversation: Conversation;
     infoPanelOpen: boolean;
+    searchOpen: boolean;
+    onToggleSearch: () => void;
     onToggleInfoPanel: () => void;
 }
 
@@ -183,7 +26,7 @@ const getSubtitle = (conversation: Conversation): string => {
     return partner?.online ? 'Đang hoạt động' : 'Không hoạt động';
 };
 
-const ChatHeader = ({ conversation, infoPanelOpen, onToggleInfoPanel }: ChatHeaderProps) => (
+const ChatHeader = ({ conversation, infoPanelOpen, searchOpen, onToggleSearch, onToggleInfoPanel }: ChatHeaderProps) => (
     <header className="flex shrink-0 items-center justify-between border-b border-line px-6 py-4">
         <div className="flex min-w-0 items-center gap-3">
             <UserAvatar name={conversation.name} imageUrl={conversation.avatarUrl} size="sm" />
@@ -195,7 +38,13 @@ const ChatHeader = ({ conversation, infoPanelOpen, onToggleInfoPanel }: ChatHead
         <div className="flex items-center gap-1">
             <IconButton icon="fa-solid fa-phone" label="Gọi thoại" />
             <IconButton icon="fa-solid fa-video" label="Gọi video" />
-            <IconButton icon="fa-solid fa-magnifying-glass" label="Tìm trong hội thoại" />
+            <IconButton
+                icon="fa-solid fa-magnifying-glass"
+                label="Tìm trong hội thoại"
+                aria-pressed={searchOpen}
+                active={searchOpen}
+                onClick={onToggleSearch}
+            />
             <IconButton
                 icon="fa-solid fa-table-columns"
                 label={infoPanelOpen ? 'Ẩn thông tin nhóm' : 'Hiện thông tin nhóm'}
@@ -209,10 +58,11 @@ const ChatHeader = ({ conversation, infoPanelOpen, onToggleInfoPanel }: ChatHead
 );
 
 interface MessageInputProps {
-    onSend: (text: string) => Promise<void>;
+    offline: boolean;
+    onSend: (text: string) => Promise<boolean>;
 }
 
-const MessageInput = ({ onSend }: MessageInputProps) => {
+const MessageInput = ({ offline, onSend }: MessageInputProps) => {
     const [text, setText] = useState('');
     const [sending, setSending] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -224,19 +74,29 @@ const MessageInput = ({ onSend }: MessageInputProps) => {
         textarea.style.height = `${Math.min(textarea.scrollHeight, MESSAGE_INPUT_MAX_HEIGHT_PX)}px`;
     }, [text]);
 
-    const canSend = text.trim().length > 0 && !sending;
+    const canSend = text.trim().length > 0 && !sending && !offline;
+
+    const insertEmoji = (emoji: string) => {
+        const textarea = textareaRef.current;
+        const start = textarea?.selectionStart ?? text.length;
+        const end = textarea?.selectionEnd ?? text.length;
+        const caret = start + emoji.length;
+        setText(text.slice(0, start) + emoji + text.slice(end));
+        requestAnimationFrame(() => {
+            textarea?.focus();
+            textarea?.setSelectionRange(caret, caret);
+        });
+    };
 
     const submit = async () => {
         const trimmed = text.trim();
         if (!trimmed || sending) return;
         setSending(true);
         setText('');
-        try {
-            await onSend(trimmed);
-        } finally {
-            setSending(false);
-            textareaRef.current?.focus();
-        }
+        const sent = await onSend(trimmed);
+        if (!sent) setText(trimmed);
+        setSending(false);
+        textareaRef.current?.focus();
     };
 
     const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -256,11 +116,11 @@ const MessageInput = ({ onSend }: MessageInputProps) => {
                     rows={1}
                     onChange={(event) => setText(event.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Nhắn gì đó nhé..."
+                    placeholder={offline ? 'Đang chờ kết nối...' : 'Nhắn gì đó nhé...'}
                     aria-label="Nhập tin nhắn"
                     className="max-h-30 min-h-9 flex-1 resize-none bg-transparent py-2 text-sm text-ink outline-none placeholder:text-mist"
                 />
-                <IconButton icon="fa-regular fa-face-smile" label="Chọn emoji" />
+                <EmojiPicker onSelect={insertEmoji} />
                 <IconButton icon="fa-solid fa-paperclip" label="Đính kèm tệp" />
                 <button
                     type="button"
@@ -280,23 +140,196 @@ const MessageInput = ({ onSend }: MessageInputProps) => {
     );
 };
 
+interface MessageSearchBarProps {
+    query: string;
+    matchCount: number;
+    position: number;
+    hasMoreMessages: boolean;
+    onQueryChange: (query: string) => void;
+    onPrevious: () => void;
+    onNext: () => void;
+    onClose: () => void;
+}
+
+const MessageSearchBar = ({
+                              query,
+                              matchCount,
+                              position,
+                              hasMoreMessages,
+                              onQueryChange,
+                              onPrevious,
+                              onNext,
+                              onClose,
+                          }: MessageSearchBarProps) => {
+    const hasQuery = query.trim().length > 0;
+
+    const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === 'Escape') onClose();
+        if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+            event.preventDefault();
+            if (event.shiftKey) onPrevious();
+            else onNext();
+        }
+    };
+
+    return (
+        <div className="shrink-0 border-b border-line px-6 py-2.5">
+            <div className="flex items-center gap-2">
+                <i className="fa-solid fa-magnifying-glass text-xs text-mist" aria-hidden="true"></i>
+                <input
+                    value={query}
+                    onChange={(event) => onQueryChange(event.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Tìm trong hội thoại"
+                    aria-label="Tìm trong hội thoại"
+                    autoFocus
+                    className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-mist"
+                />
+                {hasQuery && (
+                    <span role="status" className="shrink-0 text-xs text-slate">
+                        {matchCount > 0 ? `${position}/${matchCount}` : 'Không có kết quả'}
+                    </span>
+                )}
+                <IconButton
+                    icon="fa-solid fa-chevron-up"
+                    label="Kết quả trước"
+                    onClick={onPrevious}
+                    disabled={matchCount === 0}
+                    className="h-7 w-7"
+                />
+                <IconButton
+                    icon="fa-solid fa-chevron-down"
+                    label="Kết quả sau"
+                    onClick={onNext}
+                    disabled={matchCount === 0}
+                    className="h-7 w-7"
+                />
+                <IconButton icon="fa-solid fa-xmark" label="Đóng tìm kiếm" onClick={onClose} className="h-7 w-7" />
+            </div>
+            {hasQuery && hasMoreMessages && (
+                <p className="mt-1 text-[11px] text-mist">
+                    Chỉ tìm trong các tin nhắn đã tải. Bấm "Xem tin nhắn cũ hơn" để tìm thêm.
+                </p>
+            )}
+        </div>
+    );
+};
+
+interface ConversationPaneProps {
+    conversation: Conversation;
+    infoPanelOpen: boolean;
+    loadingOlder: boolean;
+    notice: string | null;
+    offline: boolean;
+    onToggleInfoPanel: () => void;
+    onSend: (text: string) => Promise<boolean>;
+    onLoadOlder: () => void;
+    onDismissNotice: () => void;
+    onSelectMember: (member: ConversationMember) => void;
+}
+
+const ConversationPane = ({
+                              conversation,
+                              infoPanelOpen,
+                              loadingOlder,
+                              notice,
+                              offline,
+                              onToggleInfoPanel,
+                              onSend,
+                              onLoadOlder,
+                              onDismissNotice,
+                              onSelectMember,
+                          }: ConversationPaneProps) => {
+    const [searchOpen, setSearchOpen] = useState(false);
+    const [query, setQuery] = useState('');
+    const [activeIndex, setActiveIndex] = useState(0);
+
+    const matchIds = useMemo(
+        () =>
+            conversation.messages
+                .filter((message) => message.kind === 'user' && findMatchRanges(message.text, query).length > 0)
+                .map((message) => message.id),
+        [conversation.messages, query],
+    );
+    const position = matchIds.length === 0 ? 0 : Math.min(activeIndex, matchIds.length - 1);
+    const activeMatchId = searchOpen ? (matchIds[position] ?? null) : null;
+
+    const closeSearch = () => {
+        setSearchOpen(false);
+        setQuery('');
+    };
+
+    const changeQuery = (next: string) => {
+        setQuery(next);
+        setActiveIndex(Number.MAX_SAFE_INTEGER);
+    };
+
+    const moveMatch = (step: number) => {
+        if (matchIds.length === 0) return;
+        setActiveIndex((position + step + matchIds.length) % matchIds.length);
+    };
+
+    return (
+        <section className="flex min-w-0 flex-1 flex-col bg-white">
+            <ChatHeader
+                conversation={conversation}
+                infoPanelOpen={infoPanelOpen}
+                searchOpen={searchOpen}
+                onToggleSearch={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
+                onToggleInfoPanel={onToggleInfoPanel}
+            />
+            {searchOpen && (
+                <MessageSearchBar
+                    query={query}
+                    matchCount={matchIds.length}
+                    position={position + 1}
+                    hasMoreMessages={conversation.hasMoreMessages}
+                    onQueryChange={changeQuery}
+                    onPrevious={() => moveMatch(-1)}
+                    onNext={() => moveMatch(1)}
+                    onClose={closeSearch}
+                />
+            )}
+            <MessageList
+                conversation={conversation}
+                loadingOlder={loadingOlder}
+                highlightQuery={searchOpen ? query : ''}
+                activeMatchId={activeMatchId}
+                onLoadOlder={onLoadOlder}
+                onSelectMember={onSelectMember}
+            />
+            {notice && (
+                <div
+                    role="alert"
+                    className="mx-6 mb-2 flex items-center justify-between gap-3 rounded-xl bg-danger-soft px-4 py-2.5 text-xs text-danger"
+                >
+                    <span>{notice}</span>
+                    <button type="button" onClick={onDismissNotice} aria-label="Đóng thông báo" className="shrink-0">
+                        <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+                    </button>
+                </div>
+            )}
+            <MessageInput offline={offline} onSend={onSend} />
+        </section>
+    );
+};
+
 interface ChatWindowProps {
     status: 'loading' | 'error' | 'ready';
     conversation: Conversation | null;
     infoPanelOpen: boolean;
+    loadingOlder: boolean;
+    notice: string | null;
+    offline: boolean;
     onToggleInfoPanel: () => void;
-    onSend: (text: string) => Promise<void>;
+    onSend: (text: string) => Promise<boolean>;
+    onLoadOlder: () => void;
+    onDismissNotice: () => void;
+    onSelectMember: (member: ConversationMember) => void;
     onRetry: () => void;
 }
 
-export const ChatWindow = ({
-                               status,
-                               conversation,
-                               infoPanelOpen,
-                               onToggleInfoPanel,
-                               onSend,
-                               onRetry,
-                           }: ChatWindowProps) => {
+export const ChatWindow = ({ status, conversation, onRetry, ...paneProps }: ChatWindowProps) => {
     if (status !== 'ready') {
         return (
             <section className="flex min-w-0 flex-1 bg-white">
@@ -313,20 +346,5 @@ export const ChatWindow = ({
         );
     }
 
-    const typingMember = conversation.members.find((member) => member.id === conversation.typingUserId);
-
-    return (
-        <section className="flex min-w-0 flex-1 flex-col bg-white">
-            <ChatHeader
-                conversation={conversation}
-                infoPanelOpen={infoPanelOpen}
-                onToggleInfoPanel={onToggleInfoPanel}
-            />
-            <MessageList conversation={conversation} />
-            <div className="h-8 shrink-0 px-8">
-                {typingMember && <TypingIndicator name={typingMember.name.split(' ')[0]} />}
-            </div>
-            <MessageInput key={conversation.id} onSend={onSend} />
-        </section>
-    );
+    return <ConversationPane key={conversation.id} conversation={conversation} {...paneProps} />;
 };

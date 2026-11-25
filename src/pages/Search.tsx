@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { UserAvatar } from '../components/common/UserAvatar';
 import { wsService } from '../services/websocketService';
 import type { ServerResponse } from '../services/websocketService';
+import { showChat } from '../utils/hiddenChats';
 import '../assets/Search.css';
 
 type SearchStatus = 'idle' | 'loading' | 'found' | 'not-found' | 'error';
@@ -192,9 +193,10 @@ export default function Search() {
                             <button
                                 type="button"
                                 className="search-message-btn"
-                                onClick={() =>
+                                onClick={() => {
+                                    showChat(searchedUsername);
                                     navigate('/chat', { state: { chatWith: searchedUsername } })
-                                }
+                                }}
                             >
                                 <i className="fa-regular fa-comment-dots" aria-hidden="true"></i>
                                 Nhắn tin

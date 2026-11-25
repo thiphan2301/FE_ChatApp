@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { UserAvatar } from '../components/common/UserAvatar';
 import { wsService, type ServerResponse } from '../services/websocketService';
+import { getHiddenChats, hideChat, showChat } from '../utils/hiddenChats';
 
 export default function Chat() {
     const location = useLocation();
@@ -17,11 +18,14 @@ export default function Chat() {
     const chatTargetRef = useRef(initialChatTarget);
     const [chatList, setChatList] = useState<any[]>([]);
     const [selectedChat, setSelectedChat] = useState<any | null>(null);
+    const selectedChatRef = useRef<any | null>(null);
     const [messages, setMessages] = useState<any[]>([]);
     const [inputText, setInputText] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
+    const currentPageRef = useRef(currentPage);
     const [hasMore, setHasMore] = useState(true);
     const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
+    const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
     const [, setIsLoading] = useState(true);
 
     const chatContainerRef = useRef<HTMLDivElement | null>(null);
@@ -62,6 +66,7 @@ export default function Chat() {
         if (selectedChat && hasMore) {
             const nextPage = currentPage + 1;
             setCurrentPage(nextPage);
+            currentPageRef.current = nextPage;
             fetchMessagesForChat(selectedChat, nextPage);
         }
     };
@@ -79,24 +84,49 @@ export default function Chat() {
                 if (response.event === 'GET_USER_LIST') {
                     // ktra dl an toàn tránh lỗi
                     const list = Array.isArray(response.data) ? response.data : [];
-                    setChatList(list);
+                    const targetUsername = chatTargetRef.current;
+                    const hiddenNames = getHiddenChats();
+
+                    if (targetUsername) {
+                        showChat(targetUsername);
+                        hiddenNames.delete(targetUsername.toLowerCase());
+                    }
+
+                    const visibleList = list.filter(
+                        (chat: any) =>
+                            chat.type !== 0 ||
+                            typeof chat.name !== 'string' ||
+                            !hiddenNames.has(chat.name.toLowerCase()),
+                    );
+                    const targetIsListed = visibleList.some(
+                        (chat: any) =>
+                            chat.type === 0 &&
+                            typeof chat.name === 'string' &&
+                            chat.name.toLowerCase() === targetUsername?.toLowerCase(),
+                    );
+                    const displayList =
+                        targetUsername && !targetIsListed
+                            ? [{ name: targetUsername, type: 0 }, ...visibleList]
+                            : visibleList;
+
+                    setChatList(displayList);
                     //tắt trạng thái loading
                     setIsLoading(false);
 
                     // Ưu tiên người dùng được chuyển đến từ trang tìm kiếm.
-                    if (!selectedChat) {
-                        const targetUsername = chatTargetRef.current;
+                    if (!selectedChatRef.current) {
                         const targetChat = targetUsername
-                            ? list.find(
+                            ? displayList.find(
                                 (chat: any) =>
                                     chat.type === 0 &&
                                     typeof chat.name === 'string' &&
                                     chat.name.toLocaleLowerCase() === targetUsername.toLocaleLowerCase(),
                             ) ?? { name: targetUsername, type: 0 }
-                            : list[0];
+                            : displayList[0];
 
                         if (targetChat) {
                             setSelectedChat(targetChat);
+                            selectedChatRef.current = targetChat;
                             fetchMessagesForChat(targetChat);
                             chatTargetRef.current = null;
                         }
@@ -110,7 +140,7 @@ export default function Chat() {
 
                     const newMessages = Array.isArray(msgData) ? msgData : [];
 
-                    if (currentPage === 1) {
+                    if (currentPageRef.current === 1) {
                         setMessages(newMessages);
                     } else {
                         // Nối tin nhắn cũ vào đầu danh sách
@@ -135,7 +165,7 @@ export default function Chat() {
                     if (response.data) {
                         setOnlineUsers(prev => ({
                             ...prev,
-                            [selectedChat?.name]: response.data.status
+                            [selectedChatRef.current?.name]: response.data.status
                         }));
                     }
                 }
@@ -149,13 +179,40 @@ export default function Chat() {
 
     // Khi bấm chọn một cuộc trò chuyện trong danh sách
     const handleSelectChat = (chat: any) => {
+        setOpenMenuFor(null);
         setSelectedChat(chat);
+        selectedChatRef.current = chat;
         // Reset phân trang
         setCurrentPage(1);
+        currentPageRef.current = 1;
         setHasMore(true);
         //xóa tạm tin nhắn cũ khi đổi chat
         setMessages([]);
         fetchMessagesForChat(chat, 1);
+    };
+
+    const handleHideChat = (chat: any) => {
+        if (chat.type !== 0) return;
+
+        hideChat(chat.name);
+        setChatList((current) =>
+            current.filter(
+                (item) =>
+                    item.type !== 0 ||
+                    typeof item.name !== 'string' ||
+                    item.name.toLowerCase() !== chat.name.toLowerCase(),
+            ),
+        );
+        setOpenMenuFor(null);
+
+        if (selectedChatRef.current?.name.toLowerCase() === chat.name.toLowerCase()) {
+            selectedChatRef.current = null;
+            setSelectedChat(null);
+            setMessages([]);
+            setCurrentPage(1);
+            currentPageRef.current = 1;
+            setHasMore(true);
+        }
     };
 
 
@@ -189,9 +246,6 @@ export default function Chat() {
             <div className="w-80 bg-white border-r border-gray-200 flex flex-col h-full shrink-0">
                 <div className="p-4 flex items-center justify-between border-b border-gray-100">
                     <h2 className="text-xl font-bold text-gray-800">Tin nhắn</h2>
-                    <button className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 cursor-pointer">
-                        <i className="fa-regular fa-pen-to-square"></i>
-                    </button>
                 </div>
 
                 <div className="p-3">
@@ -206,9 +260,9 @@ export default function Chat() {
                         const isActive = selectedChat?.name === chat.name;
                         return (
                             <div
-                                key={idx}
+                                key={`${chat.type}-${chat.name}-${idx}`}
                                 onClick={() => handleSelectChat(chat)}
-                                className={`p-3 flex items-center gap-3 cursor-pointer transition ${isActive ? 'bg-[#EBF2EE]' : 'hover:bg-gray-50'
+                                className={`relative p-3 ${chat.type === 0 ? 'pr-12' : ''} flex items-center gap-3 cursor-pointer transition ${isActive ? 'bg-[#EBF2EE]' : 'hover:bg-gray-50'
                                     }`}
                             >
                                 <UserAvatar name={chat.name} online={onlineUsers[chat.name] ?? false} size="md" />
@@ -220,6 +274,42 @@ export default function Chat() {
                                         {chat.type === 1 ? 'Phòng chat nhóm' : 'Trò chuyện cá nhân'}
                                     </p>
                                 </div>
+                                {chat.type === 0 && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            aria-label={`Tùy chọn ${chat.name}`}
+                                            aria-expanded={openMenuFor === chat.name}
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                setOpenMenuFor((current) =>
+                                                    current === chat.name ? null : chat.name,
+                                                );
+                                            }}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+                                        >
+                                            <i className="fa-solid fa-ellipsis" aria-hidden="true"></i>
+                                        </button>
+                                        {openMenuFor === chat.name && (
+                                            <div
+                                                role="menu"
+                                                className="absolute right-2 top-12 z-10 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+                                            >
+                                                <button
+                                                    type="button"
+                                                    role="menuitem"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        handleHideChat(chat);
+                                                    }}
+                                                    className="whitespace-nowrap px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                                                >
+                                                    Xóa khỏi danh sách
+                                                </button>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
                             </div>
                         );
                     })}

@@ -4,6 +4,7 @@ import { SegmentedControl, StatusPanel, Toggle } from '../components/common/Cont
 import { UserAvatar } from '../components/common/UserAvatar';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { getCurrentUser, getSettings, signOut, updateSettings } from '../services/accountService';
+import { requestNotificationAccess } from '../services/notificationService';
 import type {
     AccountSettings,
     MessagePermission,
@@ -11,7 +12,6 @@ import type {
     UpdateSettingsPayload,
     UserProfile,
 } from '../types';
-import { formatLongDate } from '../utils/helpers';
 import type { ReactNode } from 'react';
 
 type SettingsSectionId = 'notifications' | 'privacy' | 'security' | 'appearance';
@@ -106,27 +106,51 @@ interface NotificationSettingsProps {
     onChange: (payload: UpdateSettingsPayload) => void;
 }
 
-const NotificationSettings = ({ settings, onChange }: NotificationSettingsProps) => (
-    <SettingsSection id="notifications" title="Thông báo">
-        <SettingRow
-            label="Thông báo trên máy tính"
-            description="Nhận tin nhắn mới ngay cả khi bạn đang ở tab khác."
-        >
-            <Toggle
+const NOTIFICATION_DENIED_NOTE = 'Trình duyệt đang chặn thông báo. Hãy cho phép thông báo trong cài đặt trang web.';
+const NOTIFICATION_UNSUPPORTED_NOTE = 'Trình duyệt này không hỗ trợ thông báo trên máy tính.';
+
+const NotificationSettings = ({ settings, onChange }: NotificationSettingsProps) => {
+    const [accessNote, setAccessNote] = useState<string | null>(null);
+
+    const handleDesktopChange = async (checked: boolean) => {
+        if (checked) {
+            const access = await requestNotificationAccess();
+            if (access !== 'granted') {
+                setAccessNote(access === 'unsupported' ? NOTIFICATION_UNSUPPORTED_NOTE : NOTIFICATION_DENIED_NOTE);
+                return;
+            }
+        }
+        setAccessNote(null);
+        onChange({ desktopNotifications: checked });
+    };
+
+    return (
+        <SettingsSection id="notifications" title="Thông báo">
+            <SettingRow
                 label="Thông báo trên máy tính"
-                checked={settings.desktopNotifications}
-                onChange={(checked) => onChange({ desktopNotifications: checked })}
-            />
-        </SettingRow>
-        <SettingRow label="Âm thanh tin nhắn" description="Một âm báo nhẹ khi có người nhắn cho bạn.">
-            <Toggle
-                label="Âm thanh tin nhắn"
-                checked={settings.messageSound}
-                onChange={(checked) => onChange({ messageSound: checked })}
-            />
-        </SettingRow>
-    </SettingsSection>
-);
+                description="Nhận tin nhắn mới ngay cả khi bạn đang ở tab khác."
+            >
+                <Toggle
+                    label="Thông báo trên máy tính"
+                    checked={settings.desktopNotifications}
+                    onChange={(checked) => void handleDesktopChange(checked)}
+                />
+            </SettingRow>
+            {accessNote && (
+                <p role="alert" className="pb-1 text-[11px] text-danger">
+                    {accessNote}
+                </p>
+            )}
+            <SettingRow label="Âm thanh tin nhắn" description="Một âm báo nhẹ khi có người nhắn cho bạn.">
+                <Toggle
+                    label="Âm thanh tin nhắn"
+                    checked={settings.messageSound}
+                    onChange={(checked) => onChange({ messageSound: checked })}
+                />
+            </SettingRow>
+        </SettingsSection>
+    );
+};
 
 interface PrivacySettingsProps {
     settings: AccountSettings;
@@ -134,7 +158,11 @@ interface PrivacySettingsProps {
 }
 
 const PrivacySettings = ({ settings, onChange }: PrivacySettingsProps) => (
-    <SettingsSection id="privacy" title="Quyền riêng tư">
+    <SettingsSection
+        id="privacy"
+        title="Quyền riêng tư"
+        description="Các tùy chọn này được lưu trên thiết bị của bạn vì máy chủ chưa hỗ trợ."
+    >
         <SettingRow label="Hiển thị trạng thái hoạt động" description="Cho bạn bè biết khi bạn đang online.">
             <Toggle
                 label="Hiển thị trạng thái hoạt động"
@@ -163,13 +191,7 @@ const PrivacySettings = ({ settings, onChange }: PrivacySettingsProps) => (
             </div>
         </SettingRow>
         <SettingRow label="Tài khoản đã chặn">
-            <button
-                type="button"
-                className="flex items-center gap-2 text-xs text-slate transition hover:text-forest-soft"
-            >
-                {settings.blockedAccountCount} tài khoản
-                <i className="fa-solid fa-chevron-right text-[10px]" aria-hidden="true"></i>
-            </button>
+            <span className="text-xs text-slate">{settings.blockedAccountCount} tài khoản</span>
         </SettingRow>
     </SettingsSection>
 );
@@ -183,13 +205,13 @@ const SecuritySettings = ({ settings }: SecuritySettingsProps) => (
         <div className="flex items-center justify-between gap-6 py-2.5">
             <div>
                 <p className="text-[13px] font-medium text-ink">Mật khẩu</p>
-                <p className="mt-0.5 text-[11px] text-mist">
-                    Lần đổi gần nhất: {formatLongDate(settings.passwordChangedAt)}
-                </p>
+                <p className="mt-0.5 text-[11px] text-mist">Mật khẩu của bạn được mã hóa an toàn trên máy chủ.</p>
             </div>
             <button
                 type="button"
-                className="flex items-center gap-2 rounded-xl border border-line bg-white px-4 py-2.5 text-[13px] font-medium text-ink transition hover:border-forest-soft"
+                disabled
+                title="Máy chủ chưa hỗ trợ đổi mật khẩu"
+                className="flex cursor-not-allowed items-center gap-2 rounded-xl border border-line bg-white px-4 py-2.5 text-[13px] font-medium text-ink opacity-50"
             >
                 <i className="fa-solid fa-key text-xs" aria-hidden="true"></i>
                 Đổi mật khẩu
@@ -200,9 +222,9 @@ const SecuritySettings = ({ settings }: SecuritySettingsProps) => (
                 <li key={device.id} className="flex items-center gap-2 rounded-lg bg-paper px-3 py-2.5 text-[11px] text-slate">
                     <i className="fa-solid fa-desktop" aria-hidden="true"></i>
                     <span>
-            {device.name}
+                        {device.name}
                         {device.isCurrent && ' · Thiết bị này'}
-          </span>
+                    </span>
                     <span className="font-medium text-forest-soft">Đang hoạt động</span>
                 </li>
             ))}

@@ -1,10 +1,10 @@
 import { mockProfile, mockSettings, mockStatusOptions } from '../data/mockData';
 import type { AccountSettings, StatusOption, UpdateProfilePayload, UpdateSettingsPayload, UserProfile } from '../types';
-import { simulateLatency } from '../utils/helpers';
+import { detectCurrentDevice, simulateLatency } from '../utils/helpers';
+import { resetChatSession } from './chatService';
 import { wsService } from './websocketService';
 
 const LOGGED_IN_USERNAME_KEY = 'username';
-const RE_LOGIN_CODE_KEY = 're_login_code';
 const REMEMBER_ME_KEY = 'remember_me';
 const SETTINGS_STORAGE_KEY = 'chat-app.settings';
 const PROFILE_STORAGE_PREFIX = 'chat-app.profile.';
@@ -43,32 +43,46 @@ export const updateProfile = async (payload: UpdateProfilePayload): Promise<User
     return updatedProfile;
 };
 
-const readStoredSettings = (): AccountSettings => {
+const USER_SETTING_KEYS = [
+    'desktopNotifications',
+    'messageSound',
+    'showActivityStatus',
+    'messagePermission',
+    'theme',
+] as const;
+
+const pickUserSettings = (settings: AccountSettings): UpdateSettingsPayload =>
+    Object.fromEntries(USER_SETTING_KEYS.map((key) => [key, settings[key]]));
+
+const readStoredSettings = (): UpdateSettingsPayload => {
     try {
-        const stored = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-        return stored === null ? { ...mockSettings } : { ...mockSettings, ...(JSON.parse(stored) as Partial<AccountSettings>) };
+        return JSON.parse(window.localStorage.getItem(SETTINGS_STORAGE_KEY) ?? '{}') as UpdateSettingsPayload;
     } catch {
-        return { ...mockSettings };
+        return {};
     }
 };
 
+export const getStoredSettings = (): AccountSettings => ({
+    ...mockSettings,
+    ...readStoredSettings(),
+    activeDevices: [detectCurrentDevice()],
+});
+
 export const getSettings = async (): Promise<AccountSettings> => {
     await simulateLatency();
-    return readStoredSettings();
+    return getStoredSettings();
 };
 
 export const updateSettings = async (payload: UpdateSettingsPayload): Promise<AccountSettings> => {
     await simulateLatency(60);
-    const next = { ...readStoredSettings(), ...payload };
-    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next));
+    const next = { ...getStoredSettings(), ...payload };
+    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(pickUserSettings(next)));
     return next;
 };
 
 export const signOut = async (): Promise<void> => {
     wsService.sendMessage('LOGOUT', {});
-    [LOGGED_IN_USERNAME_KEY, RE_LOGIN_CODE_KEY, REMEMBER_ME_KEY].forEach((key) =>
-        window.localStorage.removeItem(key),
-    );
-    window.sessionStorage.removeItem(RE_LOGIN_CODE_KEY);
-    window.sessionStorage.removeItem(LOGGED_IN_USERNAME_KEY);
+    wsService.logout();
+    window.localStorage.removeItem(REMEMBER_ME_KEY);
+    resetChatSession();
 };

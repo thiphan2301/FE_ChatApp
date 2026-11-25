@@ -1,3 +1,5 @@
+import type { ActiveDevice, ConversationMember } from '../types';
+
 const UNITS = ['B', 'KB', 'MB', 'GB'];
 
 export const formatFileSize = (bytes: number): string => {
@@ -42,6 +44,7 @@ export const formatTime = (iso: string): string => {
 
 export const formatConversationTime = (iso: string, now: Date = new Date()): string => {
     const date = parseDateTime(iso);
+    if (Number.isNaN(date.getTime())) return '';
     const difference = dayDifference(date, now);
     if (difference <= 0) return formatTime(iso);
     if (difference === 1) return 'Hôm qua';
@@ -64,11 +67,6 @@ export const formatSharedDay = (iso: string, now: Date = new Date()): string => 
     if (difference === 0) return 'Hôm nay';
     if (difference === 1) return 'Hôm qua';
     return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}`;
-};
-
-export const formatLongDate = (iso: string): string => {
-    const date = parseDateTime(iso);
-    return `${date.getDate()} tháng ${date.getMonth() + 1}, ${date.getFullYear()}`;
 };
 
 export const isSameDay = (firstIso: string, secondIso: string): boolean =>
@@ -115,23 +113,14 @@ export const DISPLAY_NAME_MAX_LENGTH = 50;
 export const AVATAR_MAX_SIZE_BYTES = 5 * 1024 * 1024;
 export const AVATAR_MAX_SIZE_LABEL = '5 MB';
 export const AVATAR_ACCEPTED_TYPES = ['image/jpeg', 'image/png'];
-export const USERNAME_PATTERN = /^[a-zA-Z0-9_.]{3,20}$/;
 
 export interface ProfileErrors {
     displayName?: string;
-    username?: string;
 }
 
 export const validateDisplayName = (value: string): string | undefined => {
     if (value.trim().length === 0) return 'Vui lòng nhập tên hiển thị.';
     if (value.length > DISPLAY_NAME_MAX_LENGTH) return `Tên hiển thị tối đa ${DISPLAY_NAME_MAX_LENGTH} ký tự.`;
-    return undefined;
-};
-
-export const validateUsername = (value: string): string | undefined => {
-    if (!USERNAME_PATTERN.test(value)) {
-        return 'Tên người dùng gồm 3–20 ký tự: chữ không dấu, số, dấu chấm hoặc gạch dưới.';
-    }
     return undefined;
 };
 
@@ -145,3 +134,67 @@ export const fieldInputClass = (invalid: boolean): string =>
     `w-full rounded-xl border bg-white px-4 py-3 text-sm text-ink outline-none transition placeholder:text-mist focus:border-forest-soft ${
         invalid ? 'border-danger' : 'border-line'
     }`;
+
+export const detectCurrentDevice = (userAgent: string = navigator.userAgent): ActiveDevice => {
+    const browser = /Edg\//.test(userAgent)
+        ? 'Edge'
+        : /OPR\//.test(userAgent)
+            ? 'Opera'
+            : /Firefox\//.test(userAgent)
+                ? 'Firefox'
+                : /Chrome\//.test(userAgent)
+                    ? 'Chrome'
+                    : /Safari\//.test(userAgent)
+                        ? 'Safari'
+                        : 'Trình duyệt';
+    const system = /Windows/.test(userAgent)
+        ? 'Windows'
+        : /Android/.test(userAgent)
+            ? 'Android'
+            : /iPhone|iPad|iPod/.test(userAgent)
+                ? 'iOS'
+                : /Macintosh|Mac OS X/.test(userAgent)
+                    ? 'macOS'
+                    : /Linux/.test(userAgent)
+                        ? 'Linux'
+                        : 'thiết bị này';
+    return { id: 'current-device', name: `${browser} trên ${system}`, isCurrent: true };
+};
+
+const foldCharacter = (character: string): string =>
+    character
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D')
+        .toLowerCase();
+
+export const findMatchRanges = (text: string, query: string): Array<[number, number]> => {
+    const needle = normalizeText(query);
+    if (!needle) return [];
+    let folded = '';
+    const starts: number[] = [];
+    const ends: number[] = [];
+    let offset = 0;
+    for (const character of text) {
+        const piece = foldCharacter(character);
+        for (let index = 0; index < piece.length; index += 1) {
+            starts.push(offset);
+            ends.push(offset + character.length);
+        }
+        folded += piece;
+        offset += character.length;
+    }
+    const ranges: Array<[number, number]> = [];
+    let from = 0;
+    for (let found = folded.indexOf(needle, from); found !== -1; found = folded.indexOf(needle, from)) {
+        ranges.push([starts[found], ends[found + needle.length - 1]]);
+        from = found + needle.length;
+    }
+    return ranges;
+};
+
+export const describeMember = (member: ConversationMember): string => {
+    if (member.role === 'admin') return 'Quản trị viên';
+    return member.online ? 'Đang hoạt động' : 'Không hoạt động';
+};

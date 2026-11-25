@@ -18,6 +18,7 @@ class WebSocketService {
     private listeners: MessageListener[] = [];
     private handlers: Map<string, MessageListener[]> = new Map();
     private onOpenCallbacks: OpenListener[] = [];
+    private hasConnectedBefore = false;
 
 
     // Mở kết nối WebSocket
@@ -33,6 +34,14 @@ class WebSocketService {
             // khi connect thành công, chạy các hàm đang chờ
             this.onOpenCallbacks.forEach((cb) => cb());
             this.onOpenCallbacks = [];
+
+            // kết nối lại sau khi bị rớt mạng thì phải đăng nhập lại bằng RE_LOGIN
+            const isReconnect = this.hasConnectedBefore;
+            this.hasConnectedBefore = true;
+            const session = this.getSession();
+            if (isReconnect && session) {
+                this.sendMessage('RE_LOGIN', { user: session.username, code: session.code });
+            }
         };
 
         // Khi nhận được dữ liệu từ server gửi về
@@ -64,6 +73,10 @@ class WebSocketService {
             setTimeout(() => this.connect(), 3000);
         };
     }
+    public isConnected(): boolean {
+        return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+    }
+
     // kết nối ws xog mới gửi dl
     public onOpen(callback: OpenListener) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -113,22 +126,20 @@ class WebSocketService {
     }
 
     // Promise-based request với timeout (dùng cho Login, Register)
-    public request<T extends ServerResponse = ServerResponse>(
+    public request<T = ServerResponse>(
         sendEvent: string,
         listenEvent: string,
         data?: Record<string, unknown>,
         timeoutMs = 10000,
     ): Promise<T> {
         return new Promise((resolve, reject) => {
-            let timer: ReturnType<typeof setTimeout>;
-
             const handler = (msg: ServerResponse) => {
                 clearTimeout(timer);
                 this.off(listenEvent, handler);
-                resolve(msg as T);
+                resolve(msg as unknown as T);
             };
 
-            timer = setTimeout(() => {
+            const timer = setTimeout(() => {
                 this.off(listenEvent, handler);
                 reject(new Error('Yêu cầu quá thời gian chờ. Vui lòng thử lại.'));
             }, timeoutMs);
