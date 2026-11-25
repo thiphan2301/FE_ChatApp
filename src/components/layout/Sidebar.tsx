@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { UserAvatar } from '../common/UserAvatar';
 import { useCurrentUser } from '../../hooks/useAsyncData';
 import { useChatRealtime, useUnreadTotal } from '../../hooks/useChat';
+import logo from '../../assets/logo.png';
 
 const menuItems = [
     { id: 'chat', path: '/chat', label: 'Tin nhắn', iconClass: 'fa-regular fa-comment-dots' },
@@ -52,9 +53,18 @@ export const Sidebar: React.FC = () => {
     return (
         <aside className="ui-isolated flex h-full w-[84px] shrink-0 flex-col items-center justify-between rounded-[28px] bg-forest py-7 text-white">
             <div className="flex flex-col items-center gap-8">
-                <div onClick={() => navigate('/chat')} className="font-serif italic text-2xl tracking-wide cursor-pointer text-white/90 hover:text-white">
-                    Logo
-                </div>
+                <button
+                    type="button"
+                    onClick={() => navigate('/chat')}
+                    aria-label="ChatApp - Tin nhắn"
+                    className="relative h-12 w-[68px] overflow-hidden rounded-lg bg-white"
+                >
+                    <img
+                        src={logo}
+                        alt=""
+                        className="absolute left-1/2 top-1/2 h-36 w-36 max-w-none -translate-x-1/2 -translate-y-1/2"
+                    />
+                </button>
 
                 <nav aria-label="Điều hướng chính" className="flex flex-col gap-3">
                     {menuItems.map(renderItem)}
