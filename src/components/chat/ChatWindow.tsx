@@ -40,8 +40,6 @@ const ChatHeader = ({ conversation, infoPanelOpen, searchOpen, onToggleSearch, o
             </div>
         </div>
         <div className="flex items-center gap-1">
-            <IconButton icon="fa-solid fa-phone" label="Gọi thoại" />
-            <IconButton icon="fa-solid fa-video" label="Gọi video" />
             <IconButton
                 icon="fa-solid fa-magnifying-glass"
                 label="Tìm trong hội thoại"
@@ -193,7 +191,6 @@ const MessageInput = ({ offline, replyTo, onCancelReply, onSend }: MessageInputP
             {imageUrl && <ImageDraftBanner imageUrl={imageUrl} onRemove={() => setImageUrl(null)} />}
             {replyTo && <ReplyBanner replyTo={replyTo} onCancel={onCancelReply} />}
             <div className="flex items-end gap-2 rounded-2xl border border-line bg-paper px-3 py-2.5 focus-within:border-forest-soft">
-                <IconButton icon="fa-solid fa-plus" label="Thêm nội dung" />
                 <textarea
                     ref={textareaRef}
                     value={text}

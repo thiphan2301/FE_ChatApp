@@ -126,8 +126,8 @@ export default function Chat() {
 
                     const visibleList = list.filter(
                         (chat: any) =>
-                            chat.type !== 0 ||
-                            typeof chat.name !== 'string' ||
+                            chat.type === 0 &&
+                            typeof chat.name === 'string' &&
                             !hiddenNames.has(chat.name.toLowerCase()),
                     );
                     const targetIsListed = visibleList.some(
@@ -438,10 +438,7 @@ export default function Chat() {
                             </div>
 
                             <div className="flex items-center gap-4 text-gray-400 text-sm">
-                                <button className="hover:text-gray-700 cursor-pointer"><i className="fa-solid fa-phone"></i></button>
-                                <button className="hover:text-gray-700 cursor-pointer"><i className="fa-solid fa-video"></i></button>
                                 <button className="hover:text-gray-700 cursor-pointer"><i className="fa-solid fa-magnifying-glass"></i></button>
-                                <button className="hover:text-gray-700 cursor-pointer"><i className="fa-solid fa-ellipsis"></i></button>
                             </div>
                         </div>
 
@@ -566,9 +563,6 @@ export default function Chat() {
                             {draftImage && <ImageDraftBanner imageUrl={draftImage} onRemove={() => setDraftImage(null)} />}
                             {replyTo && <ReplyBanner replyTo={replyTo} onCancel={() => setReplyTo(null)} />}
                             <div className="flex items-center bg-[#F4F4F0] px-4 py-2.5 rounded-2xl gap-3">
-                                <button type="button" className="text-gray-400 hover:text-gray-600 text-base cursor-pointer">
-                                    <i className="fa-solid fa-plus"></i>
-                                </button>
                                 <input
                                     ref={inputRef}
                                     type="text"
@@ -589,9 +583,6 @@ export default function Chat() {
                                     placeholder="Nhắn gì đó nhé..."
                                     className="flex-1 bg-transparent border-none outline-none text-sm text-gray-700 placeholder-gray-400"
                                 />
-                                <button type="button" className="text-gray-400 hover:text-gray-600 cursor-pointer">
-                                    <i className="fa-regular fa-face-smile"></i>
-                                </button>
                                 <button
                                     type="button"
                                     aria-label="Gửi hình ảnh"
