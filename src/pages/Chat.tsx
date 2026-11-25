@@ -2,8 +2,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { UserAvatar } from '../components/common/UserAvatar';
+import { CopyMessageButton } from '../components/chat/MessageList';
+import { ForwardDialog } from '../components/chat/ForwardDialog';
+import { ImageDraftBanner, ImagePreviewModal } from '../components/chat/ImagePreviewModal';
+import { ReplyBanner, ReplyQuote } from '../components/chat/ReplyParts';
+import type { ForwardTarget, ReplyReference } from '../types';
 import { wsService, type ServerResponse } from '../services/websocketService';
 import { getHiddenChats, hideChat, showChat } from '../utils/hiddenChats';
+import { extractClipboardImage, IMAGE_ACCEPT_TYPES, uploadImageFile } from '../utils/imageCompress';
+import { createReplyReference, decodeMessagePayload, encodeMessagePayload } from '../utils/messageCodec';
+import { forwardMessage } from '../services/chatService';
 
 export default function Chat() {
     const location = useLocation();
@@ -26,9 +34,25 @@ export default function Chat() {
     const [hasMore, setHasMore] = useState(true);
     const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
     const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
+    const [replyTo, setReplyTo] = useState<ReplyReference | null>(null);
+    const [forwardMsg, setForwardMsg] = useState<{ text: string; sender: string; imageUrl?: string } | null>(null);
+    const [draftImage, setDraftImage] = useState<string | null>(null);
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const [previewImage, setPreviewImage] = useState<{ url: string; caption?: string } | null>(null);
+    const [jumpHighlightId, setJumpHighlightId] = useState<string | null>(null);
+    const [sendError, setSendError] = useState<string | null>(null);
     const [, setIsLoading] = useState(true);
 
     const chatContainerRef = useRef<HTMLDivElement | null>(null);
+    const inputRef = useRef<HTMLInputElement | null>(null);
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const jumpTimerRef = useRef<number | null>(null);
+    const localCounterRef = useRef(0);
+    const pendingSendsRef = useRef<{ to: string; mes: string; localId: string; expiresAt: number }[]>([]);
+    const lastMessageKeyRef = useRef<string | null>(null);
+
+    const getChatMessageId = (msg: any, index: number): string =>
+        msg.id !== undefined && msg.id !== null ? String(msg.id) : (msg._localId || `msg-${index}`);
 
     // hàm nhảy xuống dưới cùng cuôc trò truyện
     const scrollToBottomInstant = () => {
@@ -39,13 +63,21 @@ export default function Chat() {
 
     // theo dõi khi đổi đoạn chat hoặc khi có tín nhắn mới
     useEffect(() => {
-        if (messages.length > 0) {
-            // Dùng requestAnimationFrame để chắc chắn DOM đã render xong rồi hảy xuống dưới cùng luôn
+        const lastMsg = messages[messages.length - 1];
+        const nextKey = lastMsg ? `${selectedChat?.name ?? ''}:${getChatMessageId(lastMsg, messages.length - 1)}` : null;
+        if (nextKey && nextKey !== lastMessageKeyRef.current) {
+            lastMessageKeyRef.current = nextKey;
             requestAnimationFrame(() => {
                 scrollToBottomInstant();
             });
+        } else if (!nextKey) {
+            lastMessageKeyRef.current = null;
         }
     }, [messages, selectedChat]);
+
+    useEffect(() => () => {
+        if (jumpTimerRef.current !== null) window.clearTimeout(jumpTimerRef.current);
+    }, []);
 
     // hàm lấy lịch sử tin nhắn
     const fetchMessagesForChat = (chat: any, page: number = 1) => {
@@ -155,8 +187,30 @@ export default function Chat() {
                     }
                 } else if (response.event === 'SEND_CHAT') {
                     if (response.data) {
-                        setMessages((prev) => [...prev, response.data]);
-                        const senderName = response.data.name || response.data.from;
+                        const raw = response.data;
+                        const senderName = raw.name || raw.from || '';
+                        const currentUser = localStorage.getItem('username') || '';
+                        const now = Date.now();
+                        pendingSendsRef.current = pendingSendsRef.current.filter((item) => item.expiresAt > now);
+                        if (senderName === currentUser) {
+                            const matchedIndex = pendingSendsRef.current.findIndex(
+                                (item) => item.to === (raw.to || '') && item.mes === raw.mes,
+                            );
+                            if (matchedIndex !== -1) {
+                                pendingSendsRef.current.splice(matchedIndex, 1);
+                                return;
+                            }
+                        }
+                        const active = selectedChatRef.current;
+                        const belongsToActive =
+                            active &&
+                            ((raw.type === 1 && active.type === 1 && raw.to === active.name) ||
+                                (raw.type !== 1 &&
+                                    active.type === 0 &&
+                                    (senderName === active.name || raw.to === active.name)));
+                        if (belongsToActive) {
+                            setMessages((prev) => [...prev, raw]);
+                        }
                         if (senderName) {
                             setOnlineUsers(prev => ({ ...prev, [senderName]: true }));
                         }
@@ -169,6 +223,12 @@ export default function Chat() {
                         }));
                     }
                 }
+            } else if (response.event === 'SEND_CHAT') {
+                const failed = pendingSendsRef.current.pop();
+                if (failed) {
+                    setMessages((prev) => prev.filter((item) => item._localId !== failed.localId));
+                }
+                setSendError(response.mes || 'Không gửi được tin nhắn. Vui lòng thử lại.');
             }
         });
 
@@ -180,6 +240,9 @@ export default function Chat() {
     // Khi bấm chọn một cuộc trò chuyện trong danh sách
     const handleSelectChat = (chat: any) => {
         setOpenMenuFor(null);
+        setReplyTo(null);
+        setDraftImage(null);
+        setSendError(null);
         setSelectedChat(chat);
         selectedChatRef.current = chat;
         // Reset phân trang
@@ -216,28 +279,71 @@ export default function Chat() {
     };
 
 
+    const jumpToMessage = (messageId: string) => {
+        const element = chatContainerRef.current?.querySelector(`[data-message-id="${CSS.escape(messageId)}"]`);
+        if (!element) return;
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setJumpHighlightId(messageId);
+        if (jumpTimerRef.current !== null) window.clearTimeout(jumpTimerRef.current);
+        jumpTimerRef.current = window.setTimeout(() => setJumpHighlightId(null), 1500);
+    };
+
+    const attachImageFile = async (file: File) => {
+        setSendError(null);
+        setUploadingImage(true);
+        try {
+            const uploadedUrl = await uploadImageFile(file);
+            setDraftImage(uploadedUrl);
+            inputRef.current?.focus();
+        } catch (error) {
+            setSendError(error instanceof Error ? error.message : 'Không thể tải hình ảnh.');
+        } finally {
+            setUploadingImage(false);
+        }
+    };
+
+    const appendOptimisticMessage = (targetName: string, wireText: string) => {
+        localCounterRef.current += 1;
+        const localId = `local-${Date.now()}-${localCounterRef.current}`;
+        pendingSendsRef.current.push({
+            to: targetName,
+            mes: wireText,
+            localId,
+            expiresAt: Date.now() + 10000,
+        });
+        const myUsername = localStorage.getItem('username') || 'Unknown';
+        setMessages((prev) => [
+            ...prev,
+            {
+                _localId: localId,
+                name: myUsername,
+                mes: wireText,
+                createAt: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
+            },
+        ]);
+    };
+
     // Gửi tin nhắn thật lên server
     const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!inputText.trim() || !selectedChat) return;
+        const trimmed = inputText.trim();
+        if ((!trimmed && !draftImage) || !selectedChat || uploadingImage) return;
 
-        const messagePayload = {
+        const wireText = encodeMessagePayload(trimmed, {
+            ...(replyTo ? { replyTo } : {}),
+            ...(draftImage ? { imageUrl: draftImage } : {}),
+        });
+        wsService.sendMessage('SEND_CHAT', {
             type: selectedChat.type === 1 ? 'room' : 'people',
             to: selectedChat.name,
-            mes: inputText,
-        };
-
-        wsService.sendMessage('SEND_CHAT', messagePayload);
-
-        const myUsername = localStorage.getItem('username') || 'Unknown';
-        const localMsg = {
-            name: myUsername,
-            mes: inputText,
-            createAt: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
-        };
-        setMessages((prev) => [...prev, localMsg]);
+            mes: wireText,
+        });
+        appendOptimisticMessage(selectedChat.name, wireText);
 
         setInputText('');
+        setReplyTo(null);
+        setDraftImage(null);
+        setSendError(null);
     };
 
     return (
@@ -348,19 +454,78 @@ export default function Chat() {
                                 </div>
                             )}
                             {Array.isArray(messages) && messages.map((msg, index) => {
-
+                                const msgId = getChatMessageId(msg, index);
                                 const senderName = msg.name || msg.from || '';
                                 const currentLoggedInUser = localStorage.getItem('username') || 'Unknown';
                                 const isMe = senderName === currentLoggedInUser;
+                                const decoded = decodeMessagePayload(String(msg.mes || msg.text || ''));
+                                const isHighlighted = msgId === jumpHighlightId;
 
                                 return (
-                                    <div key={index} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                        <div className={`p-3 rounded-2xl max-w-md text-sm shadow-sm border ${isMe
-                                            ? 'bg-[#EBF2EE] border-emerald-100 text-right'
-                                            : 'bg-white border-gray-100 text-left'
-                                            }`}>
-                                            <span className="text-[10px] font-bold text-gray-600 block mb-0.5">{senderName}</span>
-                                            <p className="break-words">{msg.mes || msg.text}</p>
+                                    <div key={msgId} data-message-id={msgId} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                        <div className={`group/bubble flex max-w-md items-center gap-1.5 ${isMe ? 'flex-row-reverse' : ''}`}>
+                                            <div className={`min-w-0 p-3 rounded-2xl text-sm shadow-sm border transition ${isMe
+                                                ? 'bg-[#EBF2EE] border-emerald-100 text-left'
+                                                : 'bg-white border-gray-100 text-left'
+                                                } ${isHighlighted ? 'ring-2 ring-forest-soft' : ''}`}>
+                                                <span className="text-[10px] font-bold text-gray-600 block mb-0.5">{senderName}</span>
+                                                {decoded.forwardedFrom && (
+                                                    <p className="flex items-center gap-1.5 text-[11px] italic text-gray-400">
+                                                        <i className="fa-solid fa-share text-[10px]" aria-hidden="true"></i>
+                                                        <span>Đã chuyển tiếp từ {decoded.forwardedFrom}</span>
+                                                    </p>
+                                                )}
+                                                {decoded.replyTo && (
+                                                    <div className="mb-1.5">
+                                                        <ReplyQuote replyTo={decoded.replyTo} onJump={jumpToMessage} />
+                                                    </div>
+                                                )}
+                                                {decoded.imageUrl && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPreviewImage({ url: decoded.imageUrl!, caption: decoded.text || undefined })}
+                                                        className="mb-1.5 block overflow-hidden rounded-xl"
+                                                    >
+                                                        <img
+                                                            src={decoded.imageUrl}
+                                                            alt={decoded.text || 'Hình ảnh đã gửi'}
+                                                            className="max-h-60 max-w-60 rounded-xl object-cover transition hover:opacity-95"
+                                                            loading="lazy"
+                                                        />
+                                                    </button>
+                                                )}
+                                                {decoded.text && <p className="whitespace-pre-line break-words">{decoded.text}</p>}
+                                            </div>
+                                            <div className={`flex shrink-0 items-center gap-0.5 ${isMe ? 'flex-row-reverse' : ''}`}>
+                                                <button
+                                                    type="button"
+                                                    aria-label="Trả lời tin nhắn"
+                                                    title="Trả lời tin nhắn"
+                                                    onClick={() => {
+                                                        setReplyTo(createReplyReference(senderName || 'Người dùng', decoded.text, msgId, Boolean(decoded.imageUrl)));
+                                                        inputRef.current?.focus();
+                                                    }}
+                                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-forest-soft focus:opacity-100 group-hover/bubble:opacity-100"
+                                                >
+                                                    <i className="fa-solid fa-reply" aria-hidden="true"></i>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    aria-label="Chuyển tiếp tin nhắn"
+                                                    title="Chuyển tiếp tin nhắn"
+                                                    onClick={() =>
+                                                        setForwardMsg({
+                                                            text: decoded.text,
+                                                            sender: decoded.forwardedFrom || senderName,
+                                                            imageUrl: decoded.imageUrl,
+                                                        })
+                                                    }
+                                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-forest-soft focus:opacity-100 group-hover/bubble:opacity-100"
+                                                >
+                                                    <i className="fa-solid fa-share" aria-hidden="true"></i>
+                                                </button>
+                                                {decoded.text && <CopyMessageButton text={decoded.text} />}
+                                            </div>
                                         </div>
                                         <span className="text-[10px] text-gray-400 mt-1">{msg.createAt || ''}</span>
                                     </div>
@@ -368,16 +533,71 @@ export default function Chat() {
                             })}
                         </div>
 
+                        {sendError && (
+                            <div role="alert" className="mx-4 mt-2 flex items-center justify-between gap-2 rounded-xl bg-danger-soft px-3 py-2 text-xs text-danger">
+                                <span>{sendError}</span>
+                                <button type="button" onClick={() => setSendError(null)} aria-label="Đóng thông báo">
+                                    <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        )}
+
                         <form onSubmit={handleSendMessage} className="p-4 bg-white border-t border-gray-200">
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept={IMAGE_ACCEPT_TYPES}
+                                onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    event.target.value = '';
+                                    if (file) void attachImageFile(file);
+                                }}
+                                className="hidden"
+                            />
+                            {uploadingImage && (
+                                <p role="status" className="mb-2 flex items-center gap-2 rounded-xl bg-[#F4F4F0] px-3 py-2 text-xs text-gray-500">
+                                    <i className="fa-solid fa-circle-notch fa-spin text-[#1C3A32]" aria-hidden="true"></i>
+                                    <span>Đang tải ảnh lên...</span>
+                                </p>
+                            )}
+                            {draftImage && <ImageDraftBanner imageUrl={draftImage} onRemove={() => setDraftImage(null)} />}
+                            {replyTo && <ReplyBanner replyTo={replyTo} onCancel={() => setReplyTo(null)} />}
                             <div className="flex items-center bg-[#F4F4F0] px-4 py-2.5 rounded-2xl gap-3">
                                 <input
+                                    ref={inputRef}
                                     type="text"
                                     value={inputText}
                                     onChange={(e) => setInputText(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Escape' && replyTo) {
+                                            e.preventDefault();
+                                            setReplyTo(null);
+                                        }
+                                    }}
+                                    onPaste={(event) => {
+                                        const file = extractClipboardImage(event.clipboardData?.items);
+                                        if (!file) return;
+                                        event.preventDefault();
+                                        void attachImageFile(file);
+                                    }}
                                     placeholder="Nhắn gì đó nhé..."
                                     className="flex-1 bg-transparent border-none outline-none text-sm text-gray-700 placeholder-gray-400"
                                 />
-                                <button type="submit" className="w-8 h-8 rounded-full bg-[#1C3A32] text-white flex items-center justify-center hover:bg-[#152c25] transition cursor-pointer shrink-0">
+                                <button
+                                    type="button"
+                                    aria-label="Gửi hình ảnh"
+                                    title="Gửi hình ảnh"
+                                    disabled={uploadingImage}
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="text-gray-400 hover:text-gray-600 disabled:opacity-50 cursor-pointer"
+                                >
+                                    <i className="fa-regular fa-image"></i>
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={uploadingImage}
+                                    className="w-8 h-8 rounded-full bg-[#1C3A32] text-white flex items-center justify-center hover:bg-[#152c25] disabled:opacity-50 transition cursor-pointer shrink-0"
+                                >
                                     <i className="fa-solid fa-arrow-up text-xs"></i>
                                 </button>
                             </div>
@@ -389,6 +609,34 @@ export default function Chat() {
                     </div>
                 )}
             </div>
+            {forwardMsg && (
+                <ForwardDialog
+                    previewText={forwardMsg.text}
+                    previewImageUrl={forwardMsg.imageUrl}
+                    onForward={async (target: ForwardTarget) => {
+                        const options = {
+                            forwardedFrom: forwardMsg.sender,
+                            imageUrl: forwardMsg.imageUrl,
+                        };
+                        const isActiveChat =
+                            selectedChat &&
+                            selectedChat.name === target.id &&
+                            (selectedChat.type === 1) === (target.type === 'group');
+                        await forwardMessage(target, forwardMsg.text, options);
+                        if (isActiveChat) {
+                            appendOptimisticMessage(target.id, encodeMessagePayload(forwardMsg.text, options));
+                        }
+                    }}
+                    onClose={() => setForwardMsg(null)}
+                />
+            )}
+            {previewImage && (
+                <ImagePreviewModal
+                    imageUrl={previewImage.url}
+                    caption={previewImage.caption}
+                    onClose={() => setPreviewImage(null)}
+                />
+            )}
         </div>
     );
 }

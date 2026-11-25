@@ -39,7 +39,8 @@ export const startMessageNotifications = (): (() => void) =>
         const settings = getStoredSettings();
         if (settings.messageSound) playBeep();
         if (settings.desktopNotifications && getNotificationAccess() === 'granted') {
-            const body = `${event.message.senderId}: ${event.message.text}`.slice(0, NOTIFICATION_BODY_MAX_LENGTH);
+            const preview = event.message.text || (event.message.imageUrl ? '[Hình ảnh]' : '');
+            const body = `${event.message.senderId}: ${preview}`.slice(0, NOTIFICATION_BODY_MAX_LENGTH);
             const notification = new Notification(event.roomId, { body, tag: event.roomId });
             notification.onclick = () => {
                 window.focus();

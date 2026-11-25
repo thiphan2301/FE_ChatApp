@@ -10,6 +10,8 @@ import {
     getFileExtension,
     isSameDay,
 } from '../../utils/helpers';
+import { ImagePreviewModal } from './ImagePreviewModal';
+import { ReplyQuote } from './ReplyParts';
 
 const SEEN_AVATAR_LIMIT = 2;
 const COPIED_FEEDBACK_MS = 1500;
@@ -51,7 +53,12 @@ interface MessageBubbleProps {
     seenBy: ConversationMember[];
     highlightQuery: string;
     isActiveMatch: boolean;
+    isJumpHighlighted: boolean;
     onSelectSender?: () => void;
+    onReply?: (message: UserMessage) => void;
+    onForward?: (message: UserMessage) => void;
+    onPreviewImage: (url: string, caption?: string) => void;
+    onJumpToMessage: (messageId: string) => void;
 }
 
 const SeenBy = ({ members }: { members: ConversationMember[] }) => {
@@ -88,7 +95,7 @@ const HighlightedText = ({ text, query }: { text: string; query: string }) => {
     return <>{parts}</>;
 };
 
-const CopyMessageButton = ({ text }: { text: string }) => {
+export const CopyMessageButton = ({ text }: { text: string }) => {
     const [copied, setCopied] = useState(false);
 
     const copy = async () => {
@@ -114,6 +121,13 @@ const CopyMessageButton = ({ text }: { text: string }) => {
     );
 };
 
+export const ForwardedBadge = ({ from }: { from: string }) => (
+    <p className="flex items-center gap-1.5 text-[11px] italic text-slate">
+        <i className="fa-solid fa-share text-[10px]" aria-hidden="true"></i>
+        <span>Đã chuyển tiếp từ {from}</span>
+    </p>
+);
+
 const MessageBubble = ({
                            message,
                            sender,
@@ -121,7 +135,12 @@ const MessageBubble = ({
                            seenBy,
                            highlightQuery,
                            isActiveMatch,
+                           isJumpHighlighted,
                            onSelectSender,
+                           onReply,
+                           onForward,
+                           onPreviewImage,
+                           onJumpToMessage,
                        }: MessageBubbleProps) => (
     <div data-message-id={message.id} className={`flex flex-col gap-1.5 ${isOwn ? 'items-end' : 'items-start'}`}>
         {!isOwn && (
@@ -142,13 +161,33 @@ const MessageBubble = ({
         )}
         <div className={`group/bubble flex max-w-[75%] items-center gap-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
             <div
-                className={`flex min-w-0 flex-col gap-3 rounded-2xl px-4 py-3 text-sm leading-relaxed text-ink ${
+                className={`flex min-w-0 flex-col gap-2.5 rounded-2xl px-4 py-3 text-sm leading-relaxed text-ink transition ${
                     isOwn ? 'bg-sage' : 'bg-bubble'
-                } ${isActiveMatch ? 'ring-2 ring-yellow-400' : ''}`}
+                } ${isActiveMatch ? 'ring-2 ring-yellow-400' : isJumpHighlighted ? 'ring-2 ring-forest-soft' : ''}`}
             >
-                <p className="whitespace-pre-line break-words">
-                    <HighlightedText text={message.text} query={highlightQuery} />
-                </p>
+                {message.forwardedFrom && <ForwardedBadge from={message.forwardedFrom} />}
+                {message.replyTo && (
+                    <ReplyQuote replyTo={message.replyTo} onJump={onJumpToMessage} />
+                )}
+                {message.imageUrl && (
+                    <button
+                        type="button"
+                        onClick={() => onPreviewImage(message.imageUrl!, message.text || undefined)}
+                        className="overflow-hidden rounded-xl text-left"
+                    >
+                        <img
+                            src={message.imageUrl}
+                            alt={message.text || 'Hình ảnh đã gửi'}
+                            className="max-h-60 max-w-60 rounded-xl object-cover transition hover:opacity-95"
+                            loading="lazy"
+                        />
+                    </button>
+                )}
+                {message.text && (
+                    <p className="whitespace-pre-line break-words">
+                        <HighlightedText text={message.text} query={highlightQuery} />
+                    </p>
+                )}
                 {message.attachment && (
                     <FileAttachment
                         fileName={message.attachment.fileName}
@@ -157,7 +196,31 @@ const MessageBubble = ({
                     />
                 )}
             </div>
-            <CopyMessageButton text={message.text} />
+            <div className={`flex shrink-0 items-center gap-0.5 ${isOwn ? 'flex-row-reverse' : ''}`}>
+                {onReply && (
+                    <button
+                        type="button"
+                        aria-label="Trả lời tin nhắn"
+                        title="Trả lời tin nhắn"
+                        onClick={() => onReply(message)}
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs text-mist opacity-0 transition hover:bg-paper hover:text-forest-soft focus:opacity-100 group-hover/bubble:opacity-100"
+                    >
+                        <i className="fa-solid fa-reply" aria-hidden="true"></i>
+                    </button>
+                )}
+                {onForward && (
+                    <button
+                        type="button"
+                        aria-label="Chuyển tiếp tin nhắn"
+                        title="Chuyển tiếp tin nhắn"
+                        onClick={() => onForward(message)}
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs text-mist opacity-0 transition hover:bg-paper hover:text-forest-soft focus:opacity-100 group-hover/bubble:opacity-100"
+                    >
+                        <i className="fa-solid fa-share" aria-hidden="true"></i>
+                    </button>
+                )}
+                {message.text && <CopyMessageButton text={message.text} />}
+            </div>
         </div>
         {message.reactions.length > 0 && (
             <ul className="flex gap-1.5">
@@ -179,6 +242,8 @@ interface MessageListProps {
     activeMatchId: string | null;
     onLoadOlder: () => void;
     onSelectMember: (member: ConversationMember) => void;
+    onReply?: (message: UserMessage) => void;
+    onForward?: (message: UserMessage) => void;
 }
 
 const DayDivider = ({ label }: { label: string }) => (
@@ -204,10 +269,15 @@ export const MessageList = ({
                                 activeMatchId,
                                 onLoadOlder,
                                 onSelectMember,
+                                onReply,
+                                onForward,
                             }: MessageListProps) => {
     const { messages, members, currentUserId, firstUnreadMessageId } = conversation;
     const containerRef = useRef<HTMLDivElement>(null);
     const anchorRef = useRef<{ height: number; top: number } | null>(null);
+    const jumpTimerRef = useRef<number | null>(null);
+    const [jumpHighlightId, setJumpHighlightId] = useState<string | null>(null);
+    const [previewImage, setPreviewImage] = useState<{ url: string; caption?: string } | null>(null);
     const firstMessageId = messages[0]?.id;
     const lastMessage = messages[messages.length - 1];
     const lastMessageId = lastMessage?.id;
@@ -261,6 +331,19 @@ export const MessageList = ({
             ?.querySelector(`[data-message-id="${CSS.escape(activeMatchId)}"]`)
             ?.scrollIntoView({ block: 'center' });
     }, [activeMatchId]);
+
+    useEffect(() => () => {
+        if (jumpTimerRef.current !== null) window.clearTimeout(jumpTimerRef.current);
+    }, []);
+
+    const jumpToMessage = (messageId: string) => {
+        const element = containerRef.current?.querySelector(`[data-message-id="${CSS.escape(messageId)}"]`);
+        if (!element) return;
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setJumpHighlightId(messageId);
+        if (jumpTimerRef.current !== null) window.clearTimeout(jumpTimerRef.current);
+        jumpTimerRef.current = window.setTimeout(() => setJumpHighlightId(null), COPIED_FEEDBACK_MS);
+    };
 
     const handleScroll = () => {
         const container = containerRef.current;
@@ -319,6 +402,11 @@ export const MessageList = ({
                                     seenBy={members.filter((member) => message.seenByIds.includes(member.id))}
                                     highlightQuery={highlightQuery}
                                     isActiveMatch={message.id === activeMatchId}
+                                    isJumpHighlighted={message.id === jumpHighlightId}
+                                    onReply={onReply}
+                                    onForward={onForward}
+                                    onPreviewImage={(url, caption) => setPreviewImage({ url, caption })}
+                                    onJumpToMessage={jumpToMessage}
                                 />
                             )}
                         </Fragment>
@@ -334,6 +422,13 @@ export const MessageList = ({
                     <i className="fa-solid fa-arrow-down" aria-hidden="true"></i>
                     {unseenCount > 0 ? `${unseenCount} tin nhắn mới` : 'Xuống tin mới nhất'}
                 </button>
+            )}
+            {previewImage && (
+                <ImagePreviewModal
+                    imageUrl={previewImage.url}
+                    caption={previewImage.caption}
+                    onClose={() => setPreviewImage(null)}
+                />
             )}
         </div>
     );

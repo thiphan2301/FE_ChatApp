@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
     archiveConversation,
     createRoom,
+    forwardMessage,
     getConversation,
     getConversationSummaries,
     getMembersOnline,
@@ -18,7 +19,15 @@ import {
     startRealtime,
     subscribeChatEvents,
 } from '../services/chatService';
-import type { Conversation, ConversationSummary, Message, UserMessage } from '../types';
+import type {
+    Conversation,
+    ConversationSummary,
+    ForwardTarget,
+    Message,
+    SendMessageOptions,
+    SharedPhoto,
+    UserMessage,
+} from '../types';
 import { startMessageNotifications } from '../services/notificationService';
 import { wsService } from '../services/websocketService';
 import { parseDateTime } from '../utils/helpers';
@@ -45,8 +54,24 @@ const sortByRecent = (items: ConversationSummary[]): ConversationSummary[] =>
 const findFirstUnreadId = (messages: Message[], unreadCount: number): string | undefined =>
     unreadCount > 0 ? messages[Math.max(messages.length - unreadCount, 0)]?.id : undefined;
 
-const toPreview = (message: UserMessage, fromMe: boolean): string =>
-    `${fromMe ? 'Bạn' : message.senderId}: ${message.text}`;
+const toPreview = (message: UserMessage, fromMe: boolean): string => {
+    const body = message.text.trim()
+        ? message.imageUrl
+            ? `[Hình ảnh] ${message.text}`
+            : message.text
+        : message.imageUrl
+          ? '[Hình ảnh]'
+          : '';
+    return `${fromMe ? 'Bạn' : message.senderId}: ${body}`;
+};
+
+const mergeSharedPhotos = (existing: SharedPhoto[], incoming: UserMessage[], prepend: boolean): SharedPhoto[] => {
+    const added = incoming
+        .filter((msg) => Boolean(msg.imageUrl) && !existing.some((p) => p.id === msg.id))
+        .map((msg) => ({ id: msg.id, url: msg.imageUrl!, alt: msg.text || 'Hình ảnh' }));
+    if (added.length === 0) return existing;
+    return prepend ? [...added.reverse(), ...existing] : [...existing, ...added.reverse()];
+};
 
 const withPresence = (conversation: Conversation | null, presence: Presence | null): Conversation | null => {
     if (!conversation) return null;
@@ -192,7 +217,11 @@ export const useChat = () => {
                     if (event.roomId === activeId) {
                         updateConversation((current) =>
                             current && !current.messages.some((item) => item.id === message.id)
-                                ? { ...current, messages: [...current.messages, message] }
+                                ? {
+                                      ...current,
+                                      messages: [...current.messages, message],
+                                      sharedPhotos: mergeSharedPhotos(current.sharedPhotos, [message], true),
+                                  }
                                 : current,
                         );
                     }
@@ -215,7 +244,11 @@ export const useChat = () => {
                 if (event.type === 'sendError') {
                     updateConversation((current) =>
                         current
-                            ? { ...current, messages: current.messages.filter((item) => item.id !== event.messageId) }
+                            ? {
+                                  ...current,
+                                  messages: current.messages.filter((item) => item.id !== event.messageId),
+                                  sharedPhotos: current.sharedPhotos.filter((photo) => photo.id !== event.messageId),
+                              }
                             : current,
                     );
                     setNotice(event.reason);
@@ -235,13 +268,19 @@ export const useChat = () => {
         }
     };
 
-    const send = async (text: string): Promise<boolean> => {
+    const send = async (text: string, options?: SendMessageOptions): Promise<boolean> => {
         if (!activeId) return false;
         try {
-            const message = await sendMessage(activeId, text);
+            const message = await sendMessage(activeId, text, options);
             setNotice(null);
             updateConversation((current) =>
-                current ? { ...current, messages: [...current.messages, message] } : current,
+                current
+                    ? {
+                          ...current,
+                          messages: [...current.messages, message],
+                          sharedPhotos: mergeSharedPhotos(current.sharedPhotos, [message], true),
+                      }
+                    : current,
             );
             updateSummaries((current) =>
                 sortByRecent(
@@ -268,7 +307,12 @@ export const useChat = () => {
             pagesRef.current[activeId] = nextPage;
             updateConversation((current) =>
                 current && current.id === activeId
-                    ? { ...current, messages: [...messages, ...current.messages], hasMoreMessages: hasMore }
+                    ? {
+                          ...current,
+                          messages: [...messages, ...current.messages],
+                          hasMoreMessages: hasMore,
+                          sharedPhotos: mergeSharedPhotos(current.sharedPhotos, messages, false),
+                      }
                     : current,
             );
         } catch {
@@ -325,6 +369,13 @@ export const useChat = () => {
         updateConversation((current) => (current ? { ...current, muted } : current));
     };
 
+    const forward = async (target: ForwardTarget, message: UserMessage) => {
+        await forwardMessage(target, message.text, {
+            forwardedFrom: message.forwardedFrom || message.senderId,
+            imageUrl: message.imageUrl,
+        });
+    };
+
     return {
         summaries: { status: summaries.status, retry: summaries.retry, items: list },
         conversation: {
@@ -339,6 +390,7 @@ export const useChat = () => {
         actions: {
             selectConversation,
             send,
+            forward,
             loadOlder,
             markUnread,
             toggleArchive,
