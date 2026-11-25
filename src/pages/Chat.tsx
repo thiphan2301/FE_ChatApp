@@ -94,8 +94,8 @@ export default function Chat() {
 
                     const visibleList = list.filter(
                         (chat: any) =>
-                            chat.type !== 0 ||
-                            typeof chat.name !== 'string' ||
+                            chat.type === 0 &&
+                            typeof chat.name === 'string' &&
                             !hiddenNames.has(chat.name.toLowerCase()),
                     );
                     const targetIsListed = visibleList.some(
