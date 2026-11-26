@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent } from 'react';
+import type { ChangeEvent, ClipboardEvent, KeyboardEvent } from 'react';
 import { IconButton, StatusPanel } from '../common/Controls';
 import { UserAvatar } from '../common/UserAvatar';
-import type { Conversation, ConversationMember } from '../../types';
+import type { Conversation, ConversationMember, ReplyReference, SendMessageOptions, UserMessage } from '../../types';
 import { findMatchRanges } from '../../utils/helpers';
+import { extractClipboardImage, IMAGE_ACCEPT_TYPES, uploadImageFile } from '../../utils/imageCompress';
+import { createReplyReference } from '../../utils/messageCodec';
 import { EmojiPicker } from './EmojiPicker';
+import { ImageDraftBanner } from './ImagePreviewModal';
 import { MessageList } from './MessageList';
+import { ReplyBanner } from './ReplyParts';
 
 const MESSAGE_INPUT_MAX_HEIGHT_PX = 120;
 
@@ -57,13 +61,23 @@ const ChatHeader = ({ conversation, infoPanelOpen, searchOpen, onToggleSearch, o
 
 interface MessageInputProps {
     offline: boolean;
-    onSend: (text: string) => Promise<boolean>;
+    replyTo: ReplyReference | null;
+    onCancelReply: () => void;
+    onSend: (text: string, options?: SendMessageOptions) => Promise<boolean>;
 }
 
-const MessageInput = ({ offline, onSend }: MessageInputProps) => {
+const MessageInput = ({ offline, replyTo, onCancelReply, onSend }: MessageInputProps) => {
     const [text, setText] = useState('');
     const [sending, setSending] = useState(false);
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
+    const [imageError, setImageError] = useState<string | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (replyTo) textareaRef.current?.focus();
+    }, [replyTo]);
 
     useEffect(() => {
         const textarea = textareaRef.current;
@@ -72,7 +86,34 @@ const MessageInput = ({ offline, onSend }: MessageInputProps) => {
         textarea.style.height = `${Math.min(textarea.scrollHeight, MESSAGE_INPUT_MAX_HEIGHT_PX)}px`;
     }, [text]);
 
-    const canSend = text.trim().length > 0 && !sending && !offline;
+    const canSend = (text.trim().length > 0 || Boolean(imageUrl)) && !sending && !uploadingImage && !offline;
+
+    const attachImageFile = async (file: File) => {
+        setImageError(null);
+        setUploadingImage(true);
+        try {
+            const uploadedUrl = await uploadImageFile(file);
+            setImageUrl(uploadedUrl);
+            textareaRef.current?.focus();
+        } catch (error) {
+            setImageError(error instanceof Error ? error.message : 'Không thể tải hình ảnh.');
+        } finally {
+            setUploadingImage(false);
+        }
+    };
+
+    const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (file) void attachImageFile(file);
+    };
+
+    const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+        const file = extractClipboardImage(event.clipboardData?.items);
+        if (!file) return;
+        event.preventDefault();
+        void attachImageFile(file);
+    };
 
     const insertEmoji = (emoji: string) => {
         const textarea = textareaRef.current;
@@ -88,16 +129,36 @@ const MessageInput = ({ offline, onSend }: MessageInputProps) => {
 
     const submit = async () => {
         const trimmed = text.trim();
-        if (!trimmed || sending) return;
+        if ((!trimmed && !imageUrl) || sending || uploadingImage) return;
+        const activeReply = replyTo;
+        const activeImage = imageUrl;
         setSending(true);
         setText('');
-        const sent = await onSend(trimmed);
-        if (!sent) setText(trimmed);
+        setImageUrl(null);
+        setImageError(null);
+        if (activeReply) onCancelReply();
+        const options: SendMessageOptions | undefined =
+            activeReply || activeImage
+                ? {
+                      ...(activeReply ? { replyTo: activeReply } : {}),
+                      ...(activeImage ? { imageUrl: activeImage } : {}),
+                  }
+                : undefined;
+        const sent = await onSend(trimmed, options);
+        if (!sent) {
+            setText(trimmed);
+            setImageUrl(activeImage);
+        }
         setSending(false);
         textareaRef.current?.focus();
     };
 
     const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+        if (event.key === 'Escape' && replyTo) {
+            event.preventDefault();
+            onCancelReply();
+            return;
+        }
         if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
             event.preventDefault();
             void submit();
@@ -106,6 +167,29 @@ const MessageInput = ({ offline, onSend }: MessageInputProps) => {
 
     return (
         <div className="shrink-0 px-6 pb-4">
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept={IMAGE_ACCEPT_TYPES}
+                onChange={handleFileChange}
+                className="hidden"
+            />
+            {imageError && (
+                <p role="alert" className="mb-2 flex items-center justify-between gap-2 rounded-xl bg-danger-soft px-3 py-2 text-xs text-danger">
+                    <span>{imageError}</span>
+                    <button type="button" onClick={() => setImageError(null)} aria-label="Đóng lỗi ảnh">
+                        <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+                    </button>
+                </p>
+            )}
+            {uploadingImage && (
+                <p role="status" className="mb-2 flex items-center gap-2 rounded-xl bg-paper px-3 py-2 text-xs text-slate">
+                    <i className="fa-solid fa-circle-notch fa-spin text-forest-soft" aria-hidden="true"></i>
+                    <span>Đang tải ảnh lên...</span>
+                </p>
+            )}
+            {imageUrl && <ImageDraftBanner imageUrl={imageUrl} onRemove={() => setImageUrl(null)} />}
+            {replyTo && <ReplyBanner replyTo={replyTo} onCancel={onCancelReply} />}
             <div className="flex items-end gap-2 rounded-2xl border border-line bg-paper px-3 py-2.5 focus-within:border-forest-soft">
                 <textarea
                     ref={textareaRef}
@@ -113,11 +197,18 @@ const MessageInput = ({ offline, onSend }: MessageInputProps) => {
                     rows={1}
                     onChange={(event) => setText(event.target.value)}
                     onKeyDown={handleKeyDown}
+                    onPaste={handlePaste}
                     placeholder={offline ? 'Đang chờ kết nối...' : 'Nhắn gì đó nhé...'}
                     aria-label="Nhập tin nhắn"
                     className="max-h-30 min-h-9 flex-1 resize-none bg-transparent py-2 text-sm text-ink outline-none placeholder:text-mist"
                 />
                 <EmojiPicker onSelect={insertEmoji} />
+                <IconButton
+                    icon="fa-regular fa-image"
+                    label="Gửi hình ảnh"
+                    disabled={uploadingImage}
+                    onClick={() => fileInputRef.current?.click()}
+                />
                 <button
                     type="button"
                     aria-label="Gửi tin nhắn"
@@ -218,10 +309,11 @@ interface ConversationPaneProps {
     notice: string | null;
     offline: boolean;
     onToggleInfoPanel: () => void;
-    onSend: (text: string) => Promise<boolean>;
+    onSend: (text: string, options?: SendMessageOptions) => Promise<boolean>;
     onLoadOlder: () => void;
     onDismissNotice: () => void;
     onSelectMember: (member: ConversationMember) => void;
+    onForward?: (message: UserMessage) => void;
 }
 
 const ConversationPane = ({
@@ -235,10 +327,12 @@ const ConversationPane = ({
                               onLoadOlder,
                               onDismissNotice,
                               onSelectMember,
+                              onForward,
                           }: ConversationPaneProps) => {
     const [searchOpen, setSearchOpen] = useState(false);
     const [query, setQuery] = useState('');
     const [activeIndex, setActiveIndex] = useState(0);
+    const [replyTo, setReplyTo] = useState<ReplyReference | null>(null);
 
     const matchIds = useMemo(
         () =>
@@ -263,6 +357,10 @@ const ConversationPane = ({
     const moveMatch = (step: number) => {
         if (matchIds.length === 0) return;
         setActiveIndex((position + step + matchIds.length) % matchIds.length);
+    };
+
+    const handleReply = (message: UserMessage) => {
+        setReplyTo(createReplyReference(message.senderId, message.text, message.id, Boolean(message.imageUrl)));
     };
 
     return (
@@ -293,6 +391,8 @@ const ConversationPane = ({
                 activeMatchId={activeMatchId}
                 onLoadOlder={onLoadOlder}
                 onSelectMember={onSelectMember}
+                onReply={handleReply}
+                onForward={onForward}
             />
             {notice && (
                 <div
@@ -305,7 +405,12 @@ const ConversationPane = ({
                     </button>
                 </div>
             )}
-            <MessageInput offline={offline} onSend={onSend} />
+            <MessageInput
+                offline={offline}
+                replyTo={replyTo}
+                onCancelReply={() => setReplyTo(null)}
+                onSend={onSend}
+            />
         </section>
     );
 };
@@ -318,10 +423,11 @@ interface ChatWindowProps {
     notice: string | null;
     offline: boolean;
     onToggleInfoPanel: () => void;
-    onSend: (text: string) => Promise<boolean>;
+    onSend: (text: string, options?: SendMessageOptions) => Promise<boolean>;
     onLoadOlder: () => void;
     onDismissNotice: () => void;
     onSelectMember: (member: ConversationMember) => void;
+    onForward?: (message: UserMessage) => void;
     onRetry: () => void;
 }
 

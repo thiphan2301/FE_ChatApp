@@ -5,4 +5,13 @@ import { defineConfig } from 'vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  server: {
+    proxy: {
+      '/__upload-uguu': {
+        target: 'https://uguu.se',
+        changeOrigin: true,
+        rewrite: () => '/upload',
+      },
+    },
+  },
 })

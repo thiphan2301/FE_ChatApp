@@ -2,17 +2,19 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChatWindow } from '../components/chat/ChatWindow';
 import { ConversationList } from '../components/chat/ConversationList';
+import { ForwardDialog } from '../components/chat/ForwardDialog';
 import { GroupInfoPanel } from '../components/chat/GroupInfoPanel';
 import { MemberCard } from '../components/chat/MemberCard';
 import { StatusPanel } from '../components/common/Controls';
 import { useChat } from '../hooks/useChat';
-import type { ConversationMember } from '../types';
+import type { ConversationMember, UserMessage } from '../types';
 
 export default function GroupChat() {
     const { summaries, conversation, activeId, loadingOlder, notice, offline, actions } = useChat();
     const navigate = useNavigate();
     const [infoPanelOpen, setInfoPanelOpen] = useState(true);
     const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+    const [forwardMessageTarget, setForwardMessageTarget] = useState<UserMessage | null>(null);
     const selectedMember = conversation.data?.members.find((member) => member.id === selectedMemberId);
     const selectMember = (member: ConversationMember) => setSelectedMemberId(member.id);
 
@@ -62,6 +64,7 @@ export default function GroupChat() {
                     onLoadOlder={actions.loadOlder}
                     onDismissNotice={actions.dismissNotice}
                     onSelectMember={selectMember}
+                    onForward={setForwardMessageTarget}
                     offline={offline}
                     onRetry={conversation.retry}
                 />
@@ -82,6 +85,24 @@ export default function GroupChat() {
                     isSelf={selectedMember.id === conversation.data.currentUserId}
                     onClose={() => setSelectedMemberId(null)}
                     onMessage={() => messageMember(selectedMember)}
+                />
+            )}
+            {forwardMessageTarget && (
+                <ForwardDialog
+                    previewText={forwardMessageTarget.text}
+                    previewImageUrl={
+                        forwardMessageTarget.imageUrl ??
+                        (forwardMessageTarget.attachment?.mimeType.startsWith('image/')
+                            ? forwardMessageTarget.attachment.url
+                            : undefined)
+                    }
+                    initialTargets={summaries.items.map((item) => ({
+                        id: item.id,
+                        name: item.name,
+                        type: item.type,
+                    }))}
+                    onForward={(target) => actions.forward(target, forwardMessageTarget)}
+                    onClose={() => setForwardMessageTarget(null)}
                 />
             )}
         </div>
