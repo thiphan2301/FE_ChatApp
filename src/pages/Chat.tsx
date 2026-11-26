@@ -4,6 +4,7 @@ import { useLocation } from 'react-router-dom';
 import { UserAvatar } from '../components/common/UserAvatar';
 import { wsService, type ServerResponse } from '../services/websocketService';
 import { getHiddenChats, hideChat, showChat } from '../utils/hiddenChats';
+import { normalizeText } from '../utils/helpers';
 
 export default function Chat() {
     const location = useLocation();
@@ -21,6 +22,7 @@ export default function Chat() {
     const selectedChatRef = useRef<any | null>(null);
     const [messages, setMessages] = useState<any[]>([]);
     const [inputText, setInputText] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const currentPageRef = useRef(currentPage);
     const [hasMore, setHasMore] = useState(true);
@@ -240,6 +242,13 @@ export default function Chat() {
         setInputText('');
     };
 
+    const normalizedSearchQuery = normalizeText(searchQuery);
+    const filteredChatList = chatList.filter(
+        (chat) =>
+            typeof chat.name === 'string' &&
+            normalizeText(chat.name).includes(normalizedSearchQuery),
+    );
+
     return (
         <div className="flex flex-1 h-full bg-[#F4F4F0]">
             {/* Col 1: Danh sách tin nhắn */}
@@ -251,12 +260,19 @@ export default function Chat() {
                 <div className="p-3">
                     <div className="flex items-center bg-[#F4F4F0] px-3 py-2 rounded-xl text-sm text-gray-500">
                         <i className="fa-solid fa-magnifying-glass mr-2 text-gray-400"></i>
-                        <input type="text" placeholder="Tìm cuộc trò chuyện" className="bg-transparent border-none outline-none w-full text-xs" />
+                        <input
+                            type="search"
+                            value={searchQuery}
+                            onChange={(event) => setSearchQuery(event.target.value)}
+                            placeholder="Tìm theo tên người dùng"
+                            aria-label="Tìm cuộc trò chuyện theo tên người dùng"
+                            className="bg-transparent border-none outline-none w-full text-xs"
+                        />
                     </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
-                    {chatList.map((chat, idx) => {
+                    {filteredChatList.map((chat, idx) => {
                         const isActive = selectedChat?.name === chat.name;
                         return (
                             <div
@@ -313,6 +329,13 @@ export default function Chat() {
                             </div>
                         );
                     })}
+                    {filteredChatList.length === 0 && (
+                        <p className="p-4 text-center text-xs text-gray-500">
+                            {chatList.length === 0
+                                ? 'Chưa có cuộc trò chuyện nào.'
+                                : 'Không tìm thấy tên người dùng phù hợp.'}
+                        </p>
+                    )}
                 </div>
             </div>
 
