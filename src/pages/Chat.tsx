@@ -9,6 +9,7 @@ import { ReplyBanner, ReplyQuote } from '../components/chat/ReplyParts';
 import type { ForwardTarget, ReplyReference } from '../types';
 import { wsService, type ServerResponse } from '../services/websocketService';
 import { getHiddenChats, hideChat, showChat } from '../utils/hiddenChats';
+import { normalizeText } from '../utils/helpers';
 import { extractClipboardImage, IMAGE_ACCEPT_TYPES, uploadImageFile } from '../utils/imageCompress';
 import { createReplyReference, decodeMessagePayload, encodeMessagePayload } from '../utils/messageCodec';
 import { forwardMessage } from '../services/chatService';
@@ -29,6 +30,9 @@ export default function Chat() {
     const selectedChatRef = useRef<any | null>(null);
     const [messages, setMessages] = useState<any[]>([]);
     const [inputText, setInputText] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [messageSearchOpen, setMessageSearchOpen] = useState(false);
+    const [messageSearchQuery, setMessageSearchQuery] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const currentPageRef = useRef(currentPage);
     const [hasMore, setHasMore] = useState(true);
@@ -240,6 +244,8 @@ export default function Chat() {
     // Khi bấm chọn một cuộc trò chuyện trong danh sách
     const handleSelectChat = (chat: any) => {
         setOpenMenuFor(null);
+        setMessageSearchOpen(false);
+        setMessageSearchQuery('');
         setReplyTo(null);
         setDraftImage(null);
         setSendError(null);
@@ -272,6 +278,8 @@ export default function Chat() {
             selectedChatRef.current = null;
             setSelectedChat(null);
             setMessages([]);
+            setMessageSearchOpen(false);
+            setMessageSearchQuery('');
             setCurrentPage(1);
             currentPageRef.current = 1;
             setHasMore(true);
@@ -346,6 +354,21 @@ export default function Chat() {
         setSendError(null);
     };
 
+    const normalizedSearchQuery = normalizeText(searchQuery);
+    const filteredChatList = chatList.filter(
+        (chat) =>
+            typeof chat.name === 'string' &&
+            normalizeText(chat.name).includes(normalizedSearchQuery),
+    );
+    const normalizedMessageSearchQuery = normalizeText(messageSearchQuery);
+    const filteredMessages = messages
+        .map((message, index) => ({
+            message,
+            index,
+            text: decodeMessagePayload(String(message.mes ?? message.text ?? '')).text,
+        }))
+        .filter(({ text }) => normalizeText(text).includes(normalizedMessageSearchQuery));
+
     return (
         <div className="flex flex-1 h-full bg-[#F4F4F0]">
             {/* Col 1: Danh sách tin nhắn */}
@@ -357,12 +380,19 @@ export default function Chat() {
                 <div className="p-3">
                     <div className="flex items-center bg-[#F4F4F0] px-3 py-2 rounded-xl text-sm text-gray-500">
                         <i className="fa-solid fa-magnifying-glass mr-2 text-gray-400"></i>
-                        <input type="text" placeholder="Tìm cuộc trò chuyện" className="bg-transparent border-none outline-none w-full text-xs" />
+                        <input
+                            type="search"
+                            value={searchQuery}
+                            onChange={(event) => setSearchQuery(event.target.value)}
+                            placeholder="Tìm theo tên người dùng"
+                            aria-label="Tìm cuộc trò chuyện theo tên người dùng"
+                            className="bg-transparent border-none outline-none w-full text-xs"
+                        />
                     </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
-                    {chatList.map((chat, idx) => {
+                    {filteredChatList.map((chat, idx) => {
                         const isActive = selectedChat?.name === chat.name;
                         return (
                             <div
@@ -419,6 +449,13 @@ export default function Chat() {
                             </div>
                         );
                     })}
+                    {filteredChatList.length === 0 && (
+                        <p className="p-4 text-center text-xs text-gray-500">
+                            {chatList.length === 0
+                                ? 'Chưa có cuộc trò chuyện nào.'
+                                : 'Không tìm thấy tên người dùng phù hợp.'}
+                        </p>
+                    )}
                 </div>
             </div>
 
@@ -438,9 +475,50 @@ export default function Chat() {
                             </div>
 
                             <div className="flex items-center gap-4 text-gray-400 text-sm">
-                                <button className="hover:text-gray-700 cursor-pointer"><i className="fa-solid fa-magnifying-glass"></i></button>
+                                <button
+                                    type="button"
+                                    aria-label={messageSearchOpen ? 'Đóng tìm kiếm hội thoại' : 'Tìm trong hội thoại'}
+                                    aria-expanded={messageSearchOpen}
+                                    onClick={() => {
+                                        if (messageSearchOpen) {
+                                            setMessageSearchOpen(false);
+                                            setMessageSearchQuery('');
+                                        } else {
+                                            setMessageSearchOpen(true);
+                                        }
+                                    }}
+                                    className="hover:text-gray-700 cursor-pointer"
+                                >
+                                    <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                                </button>
                             </div>
                         </div>
+
+                        {messageSearchOpen && (
+                            <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-6 py-3">
+                                <i className="fa-solid fa-magnifying-glass text-xs text-gray-400" aria-hidden="true"></i>
+                                <input
+                                    type="search"
+                                    value={messageSearchQuery}
+                                    onChange={(event) => setMessageSearchQuery(event.target.value)}
+                                    placeholder="Tìm trong hội thoại"
+                                    aria-label="Tìm nội dung tin nhắn"
+                                    autoFocus
+                                    className="min-w-0 flex-1 bg-transparent text-sm text-gray-700 outline-none placeholder:text-gray-400"
+                                />
+                                <button
+                                    type="button"
+                                    aria-label="Đóng tìm kiếm"
+                                    onClick={() => {
+                                        setMessageSearchOpen(false);
+                                        setMessageSearchQuery('');
+                                    }}
+                                    className="text-gray-400 hover:text-gray-700"
+                                >
+                                    <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        )}
 
                         <div ref={chatContainerRef} className="flex-1 p-6 overflow-y-auto space-y-4">
                             {hasMore && messages.length >= 50 && (
@@ -453,7 +531,7 @@ export default function Chat() {
                                     </button>
                                 </div>
                             )}
-                            {Array.isArray(messages) && messages.map((msg, index) => {
+                            {filteredMessages.map(({ message: msg, index }) => {
                                 const msgId = getChatMessageId(msg, index);
                                 const senderName = msg.name || msg.from || '';
                                 const currentLoggedInUser = localStorage.getItem('username') || 'Unknown';
@@ -531,6 +609,11 @@ export default function Chat() {
                                     </div>
                                 );
                             })}
+                            {normalizedMessageSearchQuery && filteredMessages.length === 0 && (
+                                <p className="text-center text-sm text-gray-500">
+                                    Không tìm thấy tin nhắn phù hợp trong các tin nhắn đã tải.
+                                </p>
+                            )}
                         </div>
 
                         {sendError && (
